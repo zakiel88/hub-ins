@@ -1,0 +1,4 @@
+﻿src/audit/audit.service.ts(25,21): error TS2322: Type 'Record<string, unknown> | undefined' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+  Type 'Record<string, unknown>' is not assignable to type 'NullableJsonNullValueInput | InputJsonValue | undefined'.
+    Type 'Record<string, unknown>' is missing the following properties from type 'readonly (InputJsonValue | null)[]': length, concat, join, slice, and 20 more.
+src/auth/decorators/index.ts(3,23): error TS1205: Re-exporting a type when 'isolatedModules' is enabled requires using 'export type'.

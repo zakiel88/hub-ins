@@ -1,0 +1,481 @@
+// ──────────────────────────────────────
+// INS Commerce Hub — Prisma Schema
+// Matches architecture v1.1-hardened + patch v1.1.1
+// ──────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")     // Non-pooled connection for migrations (Supabase PgBouncer)
+}
+
+// ═══════════════════════════════════════
+// Phase A — Independent tables
+// ═══════════════════════════════════════
+
+model Warehouse {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique @db.VarChar(50)
+  name      String   @db.VarChar(255)
+  address   String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  inventoryItems InventoryItem[]
+
+  @@map("warehouses")
+}
+
+model ShopifyStore {
+  id                 String    @id @default(uuid()) @db.Uuid
+  storeName          String    @map("store_name") @db.VarChar(255)
+  shopifyDomain      String    @unique @map("shopify_domain") @db.VarChar(255)
+  market             String?   @db.VarChar(20)
+  accessTokenEnc     String    @map("access_token_enc")
+  tokenIv            String    @map("token_iv")
+  clientIdEnc        String?   @map("client_id_enc")
+  clientIdIv         String?   @map("client_id_iv")
+  clientSecretEnc    String?   @map("client_secret_enc")
+  clientSecretIv     String?   @map("client_secret_iv")
+  scopes             String?
+  tokenLastRotatedAt DateTime? @map("token_last_rotated_at") @db.Timestamptz()
+  apiVersion         String    @default("2025-01") @map("api_version") @db.VarChar(20)
+  isActive           Boolean   @default(true) @map("is_active")
+  lastSyncAt         DateTime? @map("last_sync_at") @db.Timestamptz()
+  webhookSecret      String?   @map("webhook_secret")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  orders                 Order[]
+  inventoryItems         InventoryItem[]
+  shopifyProductMappings ShopifyProductMapping[]
+  pricePublishLogs       PricePublishLog[]
+  syncLogs               SyncLog[]
+  webhookEvents          WebhookEvent[]
+
+  @@map("shopify_stores")
+}
+
+// ═══════════════════════════════════════
+// Phase B — Circular pair: users ↔ brands
+// Both FKs nullable → Prisma resolves ordering
+// ═══════════════════════════════════════
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  fullName     String   @map("full_name") @db.VarChar(255)
+  role         String   @db.VarChar(50)
+  brandId      String?  @map("brand_id") @db.Uuid
+  isActive     Boolean  @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz()
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations — circular with Brand
+  brand        Brand?   @relation("UserBrand", fields: [brandId], references: [id])
+  ownedBrands  Brand[]  @relation("BrandOwner")
+
+  // Other relations
+  marketPricesReviewed MarketPrice[] @relation("PriceReviewer")
+  importBatches        ImportBatch[]
+  pricePublishLogs     PricePublishLog[]
+  auditLogs            AuditLog[]
+
+  @@index([role], name: "idx_users_role")
+  @@index([brandId], name: "idx_users_brand")
+  @@map("users")
+}
+
+model Brand {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(255)
+  code        String    @unique @db.VarChar(50)
+  logoUrl     String?   @map("logo_url")
+  ownerUserId String?   @map("owner_user_id") @db.Uuid
+  status      String    @default("active") @db.VarChar(20)
+  website     String?
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz()
+
+  // Relations — circular with User
+  owner       User?     @relation("BrandOwner", fields: [ownerUserId], references: [id])
+  users       User[]    @relation("UserBrand")
+
+  // Other relations
+  collections    Collection[]
+  contracts      Contract[]
+  brandContacts  BrandContact[]
+  importBatches  ImportBatch[]
+  orderLineItems OrderLineItem[]
+
+  @@index([status], name: "idx_brands_status")
+  @@index([ownerUserId], name: "idx_brands_owner")
+  @@map("brands")
+}
+
+// ═══════════════════════════════════════
+// Phase C — Brand children
+// ═══════════════════════════════════════
+
+model Contract {
+  id          String    @id @default(uuid()) @db.Uuid
+  brandId     String    @map("brand_id") @db.Uuid
+  type        String    @db.VarChar(50)
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  terms       String?
+  fileUrl     String?   @map("file_url")
+  status      String    @default("draft") @db.VarChar(20)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@index([brandId], name: "idx_contracts_brand")
+  @@map("contracts")
+}
+
+model BrandContact {
+  id        String   @id @default(uuid()) @db.Uuid
+  brandId   String   @map("brand_id") @db.Uuid
+  name      String   @db.VarChar(255)
+  email     String?  @db.VarChar(255)
+  phone     String?  @db.VarChar(50)
+  role      String?  @db.VarChar(100)
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@index([brandId], name: "idx_bc_brand")
+  @@map("brand_contacts")
+}
+
+model Collection {
+  id        String   @id @default(uuid()) @db.Uuid
+  brandId   String   @map("brand_id") @db.Uuid
+  name      String   @db.VarChar(255)
+  season    String?  @db.VarChar(50)
+  year      Int?
+  status    String   @default("active") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  brand    Brand     @relation(fields: [brandId], references: [id])
+  products Product[]
+
+  @@index([brandId], name: "idx_collections_brand")
+  @@map("collections")
+}
+
+// ═══════════════════════════════════════
+// Phase D — Catalog hierarchy
+// ═══════════════════════════════════════
+
+model Product {
+  id             String   @id @default(uuid()) @db.Uuid
+  collectionId   String   @map("collection_id") @db.Uuid
+  /// brand_id removed per v1.1 §A3 — derive via collection.brand_id
+  name           String   @db.VarChar(255)
+  skuPrefix      String?  @map("sku_prefix") @db.VarChar(100)
+  category       String?  @db.VarChar(100)
+  material       String?  @db.VarChar(100)
+  description    String?
+  wholesalePrice Decimal? @map("wholesale_price") @db.Decimal(10, 2)
+  status         String   @default("active") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  collection Collection @relation(fields: [collectionId], references: [id])
+  colorways  Colorway[]
+
+  @@index([collectionId], name: "idx_products_collection")
+  @@index([status], name: "idx_products_status")
+  @@map("products")
+}
+
+model Colorway {
+  id          String   @id @default(uuid()) @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  sku         String   @unique @db.VarChar(100)
+  color       String   @db.VarChar(100)
+  size        String   @db.VarChar(50)
+  barcode     String?  @db.VarChar(50)
+  weightGrams Int?     @map("weight_grams")
+  images      Json?    @default("[]")
+  status      String   @default("active") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  product        Product               @relation(fields: [productId], references: [id])
+  marketPrices   MarketPrice[]
+  inventoryItems InventoryItem[]
+  orderLineItems OrderLineItem[]
+  shopifyMappings ShopifyProductMapping[]
+
+  @@index([productId], name: "idx_colorways_product")
+  @@index([barcode], name: "idx_colorways_barcode")
+  @@map("colorways")
+}
+
+// ═══════════════════════════════════════
+// Phase E — Cross-domain
+// ═══════════════════════════════════════
+
+model MarketPrice {
+  id           String    @id @default(uuid()) @db.Uuid
+  colorwayId   String    @map("colorway_id") @db.Uuid
+  market       String    @db.VarChar(20)
+  retailPrice  Decimal   @map("retail_price") @db.Decimal(10, 2)
+  comparePrice Decimal?  @map("compare_price") @db.Decimal(10, 2)
+  currency     String    @db.VarChar(3)
+  status       String    @default("draft") @db.VarChar(20)
+  reviewedBy   String?   @map("reviewed_by") @db.Uuid
+  reviewedAt   DateTime? @map("reviewed_at") @db.Timestamptz()
+  reviewNotes  String?   @map("review_notes")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  colorway        Colorway         @relation(fields: [colorwayId], references: [id])
+  reviewer        User?            @relation("PriceReviewer", fields: [reviewedBy], references: [id])
+  pricePublishLogs PricePublishLog[]
+
+  @@unique([colorwayId, market], name: "uq_mp_colorway_market")
+  @@index([status], name: "idx_mp_status")
+  @@map("market_prices")
+}
+
+model ShopifyProductMapping {
+  id                  String    @id @default(uuid()) @db.Uuid
+  colorwayId          String?   @map("colorway_id") @db.Uuid
+  shopifyStoreId      String    @map("shopify_store_id") @db.Uuid
+  shopifyProductId    BigInt    @map("shopify_product_id")
+  shopifyVariantId    BigInt    @map("shopify_variant_id")
+  shopifyInventoryId  BigInt?   @map("shopify_inventory_id")
+  shopifySku          String?   @map("shopify_sku") @db.VarChar(100)
+  shopifyTitle        String?   @map("shopify_title") @db.VarChar(255)
+  mappingStatus       String    @default("unmatched") @map("mapping_status") @db.VarChar(20)
+  matchedBy           String?   @map("matched_by") @db.VarChar(20)
+  matchedAt           DateTime? @map("matched_at") @db.Timestamptz()
+  lastSyncedAt        DateTime? @map("last_synced_at") @db.Timestamptz()
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  colorway     Colorway?    @relation(fields: [colorwayId], references: [id])
+  shopifyStore ShopifyStore @relation(fields: [shopifyStoreId], references: [id])
+
+  @@unique([shopifyStoreId, shopifyVariantId], name: "uq_spm_store_variant")
+  @@index([colorwayId], name: "idx_spm_colorway")
+  @@index([shopifyStoreId], name: "idx_spm_store")
+  @@index([mappingStatus], name: "idx_spm_status")
+  @@index([shopifySku], name: "idx_spm_shopify_sku")
+  @@map("shopify_product_mappings")
+}
+
+model Order {
+  id                 String    @id @default(uuid()) @db.Uuid
+  shopifyStoreId     String    @map("shopify_store_id") @db.Uuid
+  shopifyOrderId     BigInt    @map("shopify_order_id")
+  orderNumber        String    @map("order_number") @db.VarChar(50)
+  status             String    @default("open") @db.VarChar(20)
+  financialStatus    String?   @map("financial_status") @db.VarChar(30)
+  fulfillmentStatus  String?   @map("fulfillment_status") @db.VarChar(30)
+  customerEmail      String?   @map("customer_email") @db.VarChar(255)
+  totalPrice         Decimal   @map("total_price") @db.Decimal(10, 2)
+  currency           String    @db.VarChar(3)
+  orderDate          DateTime  @map("order_date") @db.Timestamptz()
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  shopifyStore ShopifyStore    @relation(fields: [shopifyStoreId], references: [id])
+  lineItems    OrderLineItem[]
+
+  @@unique([shopifyStoreId, shopifyOrderId], name: "uq_order_store_shopify")
+  @@index([status], name: "idx_orders_status")
+  @@index([orderDate], name: "idx_orders_date")
+  @@map("orders")
+}
+
+model OrderLineItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  orderId             String   @map("order_id") @db.Uuid
+  colorwayId          String?  @map("colorway_id") @db.Uuid
+  brandId             String?  @map("brand_id") @db.Uuid
+  shopifyLineItemId   BigInt   @map("shopify_line_item_id")
+  title               String   @db.VarChar(255)
+  sku                 String?  @db.VarChar(100)
+  quantity            Int
+  unitPrice           Decimal  @map("unit_price") @db.Decimal(10, 2)
+  totalPrice          Decimal  @map("total_price") @db.Decimal(10, 2)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  order    Order     @relation(fields: [orderId], references: [id])
+  colorway Colorway? @relation(fields: [colorwayId], references: [id])
+  brand    Brand?    @relation(fields: [brandId], references: [id])
+
+  @@index([orderId], name: "idx_oli_order")
+  @@index([colorwayId], name: "idx_oli_colorway")
+  @@index([brandId], name: "idx_oli_brand")
+  @@map("order_line_items")
+}
+
+model InventoryItem {
+  id                     String    @id @default(uuid()) @db.Uuid
+  colorwayId             String    @map("colorway_id") @db.Uuid
+  warehouseId            String    @map("warehouse_id") @db.Uuid
+  quantityOnHand         Int       @default(0) @map("quantity_on_hand")
+  quantityReserved       Int       @default(0) @map("quantity_reserved")
+  /// quantity_available is computed in app layer: on_hand - reserved
+  lastSyncSourceStoreId  String?   @map("last_sync_source_store_id") @db.Uuid
+  lastSyncedAt           DateTime? @map("last_synced_at") @db.Timestamptz()
+  syncStatus             String    @default("synced") @map("sync_status") @db.VarChar(20)
+  lastCountedAt          DateTime? @map("last_counted_at") @db.Timestamptz()
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  colorway     Colorway     @relation(fields: [colorwayId], references: [id])
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id])
+  sourceStore  ShopifyStore? @relation(fields: [lastSyncSourceStoreId], references: [id])
+
+  @@unique([colorwayId, warehouseId], name: "uq_inv_colorway_warehouse")
+  @@index([colorwayId], name: "idx_inv_colorway")
+  @@index([warehouseId], name: "idx_inv_warehouse")
+  @@index([syncStatus], name: "idx_inv_sync_status")
+  @@map("inventory_items")
+}
+
+// ═══════════════════════════════════════
+// Phase F — Supporting tables
+// ═══════════════════════════════════════
+
+model ImportBatch {
+  id           String    @id @default(uuid()) @db.Uuid
+  brandId      String    @map("brand_id") @db.Uuid
+  uploadedBy   String    @map("uploaded_by") @db.Uuid
+  fileName     String    @map("file_name") @db.VarChar(255)
+  fileUrl      String?   @map("file_url")
+  status       String    @default("uploaded") @db.VarChar(20)
+  totalRows    Int       @default(0) @map("total_rows")
+  validRows    Int       @default(0) @map("valid_rows")
+  errorRows    Int       @default(0) @map("error_rows")
+  reviewedBy   String?   @map("reviewed_by") @db.Uuid
+  reviewedAt   DateTime? @map("reviewed_at") @db.Timestamptz()
+  reviewNotes  String?   @map("review_notes")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  brand      Brand       @relation(fields: [brandId], references: [id])
+  uploader   User        @relation(fields: [uploadedBy], references: [id])
+  importRows ImportRow[]
+
+  @@index([brandId], name: "idx_ib_brand")
+  @@index([status], name: "idx_ib_status")
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id            String   @id @default(uuid()) @db.Uuid
+  importBatchId String   @map("import_batch_id") @db.Uuid
+  rowNumber     Int      @map("row_number")
+  rawData       Json     @map("raw_data")
+  status        String   @default("pending") @db.VarChar(20)
+  errors        Json?    @default("[]")
+  productId     String?  @map("product_id") @db.Uuid
+  colorwayId    String?  @map("colorway_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@index([importBatchId], name: "idx_ir_batch")
+  @@map("import_rows")
+}
+
+model PricePublishLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  publishJobId    String   @map("publish_job_id") @db.Uuid
+  marketPriceId   String   @map("market_price_id") @db.Uuid
+  shopifyStoreId  String   @map("shopify_store_id") @db.Uuid
+  action          String   @db.VarChar(20)
+  status          String   @db.VarChar(20)
+  requestPayload  Json?    @map("request_payload")
+  responsePayload Json?    @map("response_payload")
+  errorMessage    String?  @map("error_message")
+  publishedBy     String?  @map("published_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  marketPrice  MarketPrice  @relation(fields: [marketPriceId], references: [id])
+  shopifyStore ShopifyStore @relation(fields: [shopifyStoreId], references: [id])
+  publisher    User?        @relation(fields: [publishedBy], references: [id])
+
+  @@index([publishJobId], name: "idx_ppl_job")
+  @@index([marketPriceId], name: "idx_ppl_mp")
+  @@index([shopifyStoreId], name: "idx_ppl_store")
+  @@map("price_publish_logs")
+}
+
+model SyncLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  shopifyStoreId String    @map("shopify_store_id") @db.Uuid
+  entityType     String    @map("entity_type") @db.VarChar(50)
+  syncType       String    @map("sync_type") @db.VarChar(20)
+  status         String    @default("running") @db.VarChar(20)
+  totalRecords   Int?      @map("total_records")
+  syncedRecords  Int?      @map("synced_records")
+  errorMessage   String?   @map("error_message")
+  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz()
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz()
+
+  shopifyStore ShopifyStore @relation(fields: [shopifyStoreId], references: [id])
+
+  @@index([shopifyStoreId], name: "idx_sl_store")
+  @@index([status], name: "idx_sl_status")
+  @@map("sync_logs")
+}
+
+model WebhookEvent {
+  id                String    @id @default(uuid()) @db.Uuid
+  shopifyStoreId    String    @map("shopify_store_id") @db.Uuid
+  shopifyWebhookId  String    @map("shopify_webhook_id") @db.VarChar(100)
+  topic             String    @db.VarChar(100)
+  shopifyEntityId   BigInt?   @map("shopify_entity_id")
+  status            String    @default("received") @db.VarChar(20)
+  attempts          Int       @default(0)
+  payloadHash       String?   @map("payload_hash") @db.VarChar(64)
+  errorMessage      String?   @map("error_message")
+  receivedAt        DateTime  @default(now()) @map("received_at") @db.Timestamptz()
+  processedAt       DateTime? @map("processed_at") @db.Timestamptz()
+
+  shopifyStore ShopifyStore @relation(fields: [shopifyStoreId], references: [id])
+
+  @@unique([shopifyStoreId, shopifyWebhookId], name: "uq_we_store_webhook")
+  @@index([shopifyStoreId, topic], name: "idx_we_store_topic")
+  @@index([status], name: "idx_we_status")
+  @@map("webhook_events")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   String   @map("entity_id") @db.Uuid
+  changes    Json?
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId], name: "idx_al_user")
+  @@index([entityType, entityId], name: "idx_al_entity")
+  @@index([createdAt], name: "idx_al_created")
+  @@map("audit_logs")
+}

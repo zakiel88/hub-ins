@@ -1,0 +1,60 @@
+﻿   â–² Next.js 15.5.12
+
+   Creating an optimized production build ...
+ âœ“ Compiled successfully in 2.2s
+   Linting and checking validity of types ...
+
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you. Strict-mode is set to false by default.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+   	- allowJs was set to true
+   	- noEmit was set to true
+   	- incremental was set to true
+
+node.exe : Failed to 
+compile.
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpeci    fied: 
+(Failed to     
+compile.:String)     [], 
+RemoteExcepti    on
+    + FullyQualifiedE    
+rrorId : NativeCo    
+mmandError
+ 
+
+./src/app/brands/page.tsx:2
+2:13
+Type error: Cannot find 
+name 'window'.
+
+[0m [90m 20 |[39m       
+      setMeta(res[33m.[39
+mmeta)[33m;[39m
+ [90m 21 |[39m         } 
+[36mcatch[39m {
+[31m[1m>[22m[39m[90m 
+22 |[39m             windo
+w[33m.[39mlocation[33m.
+[39mhref [33m=[39m [32m'
+/login'[39m[33m;[39m
+ [90m    |[39m           
+  [31m[1m^[22m[39m
+ [90m 23 |[39m         } 
+[36mfinally[39m {
+ [90m 24 |[39m           
+  setLoading([36mfalse[39
+m)[33m;[39m
+ [90m 25 |[39m         
+}[0m
+Next.js build worker 
+exited with code: 1 and 
+signal: null
