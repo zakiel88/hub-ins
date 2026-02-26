@@ -61,6 +61,11 @@ export default function LoginPage() {
                         {loading ? 'Signing in…' : 'Sign In'}
                     </button>
                 </form>
+                <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                    <a href="/forgot-password" style={{ color: 'var(--primary)', fontSize: '13px', textDecoration: 'none' }}>
+                        Forgot password?
+                    </a>
+                </div>
                 <div className="login-footer">
                     <span>INS Commerce Hub v1.0</span>
                 </div>

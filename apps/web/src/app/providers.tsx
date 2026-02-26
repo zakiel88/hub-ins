@@ -5,7 +5,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { AuthGuard } from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 
-const NO_SIDEBAR_ROUTES = ['/login'];
+const NO_SIDEBAR_ROUTES = ['/login', '/forgot-password', '/reset-password'];
 
 export function Providers({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();

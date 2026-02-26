@@ -30,6 +30,7 @@ const navSections = [
     {
         title: 'Settings',
         items: [
+            { label: 'Users', href: '/settings/users', icon: '👥', adminOnly: true },
             { label: 'Audit Log', href: '/settings/audit', icon: '📝' },
         ],
     },
@@ -59,21 +60,27 @@ export default function Sidebar() {
             </div>
 
             <nav className="sidebar-nav">
-                {navSections.map((section) => (
-                    <div key={section.title} className="nav-section">
-                        <div className="nav-section-title">{section.title}</div>
-                        {section.items.map((item) => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`nav-item ${isActive(item.href) ? 'nav-item-active' : ''}`}
-                            >
-                                <span className="nav-icon">{item.icon}</span>
-                                {item.label}
-                            </Link>
-                        ))}
-                    </div>
-                ))}
+                {navSections.map((section) => {
+                    const items = section.items.filter(
+                        (item: any) => !item.adminOnly || user?.role === 'admin'
+                    );
+                    if (items.length === 0) return null;
+                    return (
+                        <div key={section.title} className="nav-section">
+                            <div className="nav-section-title">{section.title}</div>
+                            {items.map((item: any) => (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={`nav-item ${isActive(item.href) ? 'nav-item-active' : ''}`}
+                                >
+                                    <span className="nav-icon">{item.icon}</span>
+                                    {item.label}
+                                </Link>
+                            ))}
+                        </div>
+                    );
+                })}
             </nav>
 
             {user && (

@@ -310,6 +310,59 @@ class ApiClient {
         const qs = params ? '?' + new URLSearchParams(params).toString() : '';
         return this.request<{ data: any[]; meta: any }>(`/api/v1/shopify-stores/${id}/sync-logs${qs}`);
     }
+
+    // ─── Users Management (admin only) ────────────────────────
+    async getUsers() {
+        return this.request<{ data: any[] }>('/api/v1/users');
+    }
+
+    async createUser(data: { email: string; password: string; fullName: string; role: string; brandId?: string }) {
+        return this.request<{ data: any }>('/api/v1/users', {
+            method: 'POST', body: JSON.stringify(data),
+        });
+    }
+
+    async updateUser(id: string, data: { fullName?: string; role?: string; brandId?: string | null }) {
+        return this.request<{ data: any }>(`/api/v1/users/${id}`, {
+            method: 'PUT', body: JSON.stringify(data),
+        });
+    }
+
+    async changeUserPassword(id: string, newPassword: string) {
+        return this.request<void>(`/api/v1/users/${id}/password`, {
+            method: 'PATCH', body: JSON.stringify({ newPassword }),
+        });
+    }
+
+    async toggleUser(id: string) {
+        return this.request<{ data: any }>(`/api/v1/users/${id}/toggle`, { method: 'PATCH' });
+    }
+
+    // ─── Self password change ─────────────────────────────────
+    async changeMyPassword(currentPassword: string, newPassword: string) {
+        return this.request<void>('/api/v1/auth/change-password', {
+            method: 'PATCH', body: JSON.stringify({ currentPassword, newPassword }),
+        });
+    }
+
+    async updateMyProfile(data: { fullName?: string; phone?: string | null }) {
+        return this.request<{ data: any }>('/api/v1/auth/profile', {
+            method: 'PUT', body: JSON.stringify(data),
+        });
+    }
+
+    // ─── Forgot / Reset Password ─────────────────────────────
+    async forgotPassword(email: string) {
+        return this.request<{ message: string }>('/api/v1/auth/forgot-password', {
+            method: 'POST', body: JSON.stringify({ email }),
+        });
+    }
+
+    async resetPassword(token: string, newPassword: string) {
+        return this.request<{ success: boolean; message: string }>('/api/v1/auth/reset-password', {
+            method: 'POST', body: JSON.stringify({ token, newPassword }),
+        });
+    }
 }
 
 export const api = new ApiClient();

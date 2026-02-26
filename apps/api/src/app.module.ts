@@ -13,6 +13,8 @@ import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { ShopifyStoresModule } from './shopify-stores/shopify-stores.module';
 import { AuditModule } from './audit/audit.module';
+import { UsersModule } from './users/users.module';
+import { MailModule } from './mail/mail.module';
 import { JwtAuthGuard } from './auth/guards';
 import { RolesGuard } from './auth/guards';
 import { getConfig } from './config/configuration';
@@ -61,6 +63,8 @@ import { getConfig } from './config/configuration';
         InventoryModule,
         OrdersModule,
         ShopifyStoresModule,
+        UsersModule,
+        MailModule,
     ],
     providers: [
         // Global JWT guard — all routes require auth unless @Public()
