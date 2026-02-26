@@ -29,7 +29,9 @@ async function bootstrap() {
     const expressApp = app.getHttpAdapter().getInstance();
     expressApp.set('trust proxy', 1);
 
-    await app.listen(config.API_PORT);
-    console.log(`🚀 INS Commerce Hub API running on http://localhost:${config.API_PORT}`);
+    // Railway sets PORT automatically — must use it, fallback to API_PORT for local dev
+    const port = process.env.PORT || config.API_PORT;
+    await app.listen(port);
+    console.log(`🚀 INS Commerce Hub API running on port ${port}`);
 }
 bootstrap();
