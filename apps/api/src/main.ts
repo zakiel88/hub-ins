@@ -42,7 +42,7 @@ async function bootstrap() {
 
     // Railway sets PORT automatically — must use it, fallback to API_PORT for local dev
     const port = process.env.PORT || config.API_PORT;
-    await app.listen(port);
-    console.log(`🚀 INS Commerce Hub API running on port ${port}`);
+    await app.listen(port, '0.0.0.0');
+    console.log(`🚀 INS Commerce Hub API running on 0.0.0.0:${port}`);
 }
 bootstrap();
