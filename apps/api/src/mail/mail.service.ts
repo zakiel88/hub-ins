@@ -4,18 +4,25 @@ import { Resend } from 'resend';
 @Injectable()
 export class MailService {
     private readonly logger = new Logger(MailService.name);
-    private readonly resend: Resend;
+    private readonly resend: Resend | null;
     private readonly fromEmail: string;
     private readonly appUrl: string;
 
     constructor() {
-        this.resend = new Resend(process.env.RESEND_API_KEY);
+        const apiKey = process.env.RESEND_API_KEY;
+        if (apiKey) {
+            this.resend = new Resend(apiKey);
+        } else {
+            this.resend = null;
+            this.logger.warn('RESEND_API_KEY not set — email sending disabled');
+        }
         this.fromEmail = process.env.MAIL_FROM || 'INS Hub <onboarding@resend.dev>';
         this.appUrl = process.env.APP_URL || 'http://localhost:3000';
     }
 
     /** Send welcome email when admin creates a new user */
     async sendWelcomeEmail(to: string, fullName: string, tempPassword: string) {
+        if (!this.resend) { this.logger.warn('Email disabled — skipping welcome email'); return; }
         try {
             this.logger.log(`Sending welcome email to ${to} from ${this.fromEmail}`);
             const res = await this.resend.emails.send({
@@ -33,6 +40,7 @@ export class MailService {
 
     /** Send password reset link */
     async sendPasswordResetEmail(to: string, fullName: string, token: string) {
+        if (!this.resend) { this.logger.warn('Email disabled — skipping reset email'); return; }
         const resetUrl = `${this.appUrl}/reset-password?token=${token}`;
         try {
             this.logger.log(`Sending reset email to ${to} from ${this.fromEmail}`);
