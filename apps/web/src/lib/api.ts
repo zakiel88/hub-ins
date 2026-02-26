@@ -316,13 +316,13 @@ class ApiClient {
         return this.request<{ data: any[] }>('/api/v1/users');
     }
 
-    async createUser(data: { email: string; password: string; fullName: string; role: string; brandId?: string }) {
+    async createUser(data: { email: string; password: string; fullName: string; phone?: string; role: string; brandId?: string; sendInvite?: boolean }) {
         return this.request<{ data: any }>('/api/v1/users', {
             method: 'POST', body: JSON.stringify(data),
         });
     }
 
-    async updateUser(id: string, data: { fullName?: string; role?: string; brandId?: string | null }) {
+    async updateUser(id: string, data: { fullName?: string; phone?: string | null; role?: string; brandId?: string | null }) {
         return this.request<{ data: any }>(`/api/v1/users/${id}`, {
             method: 'PUT', body: JSON.stringify(data),
         });
