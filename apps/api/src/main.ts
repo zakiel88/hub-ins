@@ -20,9 +20,20 @@ async function bootstrap() {
     if (config.NODE_ENV === 'development') {
         allowedOrigins.push('http://localhost:3000', `http://localhost:${config.API_PORT}`);
     }
+    console.log('🔒 CORS allowed origins:', allowedOrigins);
     app.enableCors({
-        origin: allowedOrigins,
+        origin: (origin, callback) => {
+            // Allow requests with no origin (mobile apps, curl, server-to-server)
+            if (!origin) return callback(null, true);
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+            console.warn(`⚠️ CORS blocked origin: ${origin}`);
+            return callback(null, false);
+        },
         credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
     });
 
     // Trust proxy (for Railway / load balancer)
