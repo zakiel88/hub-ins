@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { AuthProvider } from '@/lib/auth-context';
+import { AuthGuard } from '@/components/AuthGuard';
 import Sidebar from '@/components/Sidebar';
 
 const NO_SIDEBAR_ROUTES = ['/login'];
@@ -13,10 +14,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <AuthProvider>
             {showSidebar ? (
-                <div className="layout">
-                    <Sidebar />
-                    <main className="main">{children}</main>
-                </div>
+                <AuthGuard>
+                    <div className="layout">
+                        <Sidebar />
+                        <main className="main">{children}</main>
+                    </div>
+                </AuthGuard>
             ) : (
                 children
             )}
