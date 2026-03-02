@@ -170,6 +170,13 @@ export default function MerchandisePage() {
                         <option key={k} value={k}>{v.label}</option>
                     ))}
                 </select>
+                <select value={itemState} onChange={e => { setItemState(e.target.value); setPage(1); }}
+                    style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', fontSize: 13 }}>
+                    <option value="">Tất cả trạng thái SP</option>
+                    {Object.entries(ITEM_STATE_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                    ))}
+                </select>
                 <div style={{ display: 'flex', gap: 0 }}>
                     <input
                         type="text" placeholder="Tìm SKU, sản phẩm, order#..."
@@ -207,7 +214,7 @@ export default function MerchandisePage() {
                     <button onClick={() => handleBulkAction('IN_STOCK')} style={{
                         padding: '5px 12px', background: '#22c55e22', border: '1px solid #22c55e44',
                         borderRadius: 6, color: '#22c55e', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                    }}>✓ Có hàng</button>
+                    }}>✓ Check Stock — Có hàng</button>
                     <button onClick={() => handleBulkAction('NEEDS_PURCHASE')} style={{
                         padding: '5px 12px', background: '#ef444422', border: '1px solid #ef444444',
                         borderRadius: 6, color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600,
