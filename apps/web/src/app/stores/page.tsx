@@ -139,8 +139,9 @@ export default function StoresPage() {
     const handleSyncOrders = async (store: any) => {
         setSyncingId(store.id);
         try {
-            const res = await api.syncStoreOrders(store.id, 10);
-            showToast(`Đồng bộ xong: ${res.data.created} mới, ${res.data.updated} cập nhật`);
+            // Kéo toàn bộ orders từ 1/1/2026, phân trang tự động
+            const res = await api.syncStoreOrders(store.id, 250, '2026-01-01');
+            showToast(`Đồng bộ xong: ${res.data.created} mới, ${res.data.updated} cập nhật (tổng: ${res.data.fetched})`);
             load();
         } catch (err: any) {
             showToast(err.message, false);

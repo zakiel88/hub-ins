@@ -420,8 +420,10 @@ class ApiClient {
         return this.request<{ data: any }>('/api/v1/pipeline/summary');
     }
 
-    async syncStoreOrders(storeId: string, limit = 50) {
-        return this.request<{ data: any }>(`/api/v1/shopify-stores/${storeId}/sync-orders?limit=${limit}`, {
+    async syncStoreOrders(storeId: string, limit = 250, sinceDate?: string) {
+        let url = `/api/v1/shopify-stores/${storeId}/sync-orders?limit=${limit}`;
+        if (sinceDate) url += `&sinceDate=${sinceDate}`;
+        return this.request<{ data: any }>(url, {
             method: 'POST',
         });
     }
