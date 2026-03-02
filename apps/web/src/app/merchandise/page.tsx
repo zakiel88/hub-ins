@@ -36,6 +36,9 @@ export default function MerchandisePage() {
     const [page, setPage] = useState(1);
     const limit = 50;
 
+    // Selection
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -50,6 +53,7 @@ export default function MerchandisePage() {
             setItems(res.data || []);
             setTotal(res.total || 0);
             setSummary(res.summary || {});
+            setSelected(new Set()); // clear selection on new data
         } catch (e: any) {
             console.error('Failed to load merchandise:', e);
         } finally {
@@ -68,6 +72,40 @@ export default function MerchandisePage() {
         if (li.brand?.name) return li.brand.name;
         if (li.sku && li.sku.includes('-')) return li.sku.split('-')[0];
         return null;
+    };
+
+    // Selection handlers
+    const toggleSelect = (id: string) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selected.size === items.length) {
+            setSelected(new Set());
+        } else {
+            setSelected(new Set(items.map(i => i.id)));
+        }
+    };
+
+    const isAllSelected = items.length > 0 && selected.size === items.length;
+
+    const handleBulkAction = async (newState: string) => {
+        if (selected.size === 0) return;
+        try {
+            for (const id of selected) {
+                await api.updateMerchandiseItemState(id, newState);
+            }
+            setSelected(new Set());
+            fetchData();
+        } catch (e: any) {
+            console.error('Bulk action failed:', e);
+            alert('Lỗi: ' + e.message);
+        }
     };
 
     const totalPages = Math.ceil(total / limit);
@@ -157,58 +195,112 @@ export default function MerchandisePage() {
                 </div>
             </div>
 
+            {/* Bulk Actions Bar */}
+            {selected.size > 0 && (
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', marginBottom: 12,
+                    background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 10,
+                }}>
+                    <span style={{ color: '#818cf8', fontSize: 13, fontWeight: 600 }}>
+                        ✓ {selected.size} sản phẩm được chọn
+                    </span>
+                    <button onClick={() => handleBulkAction('IN_STOCK')} style={{
+                        padding: '5px 12px', background: '#22c55e22', border: '1px solid #22c55e44',
+                        borderRadius: 6, color: '#22c55e', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    }}>✓ Có hàng</button>
+                    <button onClick={() => handleBulkAction('NEEDS_PURCHASE')} style={{
+                        padding: '5px 12px', background: '#ef444422', border: '1px solid #ef444444',
+                        borderRadius: 6, color: '#ef4444', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    }}>⚠ Cần mua</button>
+                    <button onClick={() => handleBulkAction('PENDING')} style={{
+                        padding: '5px 12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6, color: '#888', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    }}>↩ Reset</button>
+                    <button onClick={() => setSelected(new Set())} style={{
+                        padding: '5px 12px', background: 'transparent', border: 'none',
+                        color: '#666', cursor: 'pointer', fontSize: 12, marginLeft: 'auto',
+                    }}>✕ Bỏ chọn</button>
+                </div>
+            )}
+
             {/* Table */}
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                            {['Order', 'Brand', 'Sản phẩm', 'SKU', 'SL', 'Giá', 'Trạng Thái', 'Trạng Thái Đơn'].map(h => (
-                                <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {loading ? (
-                            <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#666' }}>⏳ Đang tải...</td></tr>
-                        ) : items.length === 0 ? (
-                            <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#666' }}>Không có sản phẩm nào</td></tr>
-                        ) : items.map((li: any) => {
-                            const brand = getBrand(li);
-                            const itemInfo = ITEM_STATE_LABELS[li.itemState] || ITEM_STATE_LABELS.PENDING;
-                            const orderInfo = ORDER_STATE_LABELS[li.order?.pipelineState] || { label: li.order?.pipelineState, color: '#888' };
-                            return (
-                                <tr key={li.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                    <td style={{ padding: '10px 12px' }}>
-                                        <Link href={`/orders/${li.order?.id}`} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600, fontSize: 13 }}>
-                                            {li.order?.orderNumber}
-                                        </Link>
-                                    </td>
-                                    <td style={{ padding: '10px 12px' }}>
-                                        {brand ? (
-                                            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#8b5cf622', color: '#8b5cf6' }}>{brand}</span>
-                                        ) : <span style={{ color: '#555' }}>—</span>}
-                                    </td>
-                                    <td style={{ padding: '10px 12px', color: '#ddd', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>
-                                        {li.title}
-                                    </td>
-                                    <td style={{ padding: '10px 12px', color: '#aaa', fontFamily: 'monospace', fontSize: 11 }}>{li.sku || '—'}</td>
-                                    <td style={{ padding: '10px 12px', color: '#fff', fontWeight: 600 }}>{li.quantity}</td>
-                                    <td style={{ padding: '10px 12px', color: '#aaa', fontSize: 13 }}>${parseFloat(li.unitPrice).toFixed(2)}</td>
-                                    <td style={{ padding: '10px 12px' }}>
-                                        <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: itemInfo.bg, color: itemInfo.color }}>
-                                            {itemInfo.label}
-                                        </span>
-                                    </td>
-                                    <td style={{ padding: '10px 12px' }}>
-                                        <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: orderInfo.color + '22', color: orderInfo.color }}>
-                                            {orderInfo.label}
-                                        </span>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                <th style={{ padding: '10px 8px', textAlign: 'center', width: 40 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={isAllSelected}
+                                        onChange={toggleSelectAll}
+                                        style={{ accentColor: '#6366f1', cursor: 'pointer', width: 16, height: 16 }}
+                                    />
+                                </th>
+                                {['STT', 'Order', 'Brand', 'Sản phẩm', 'SKU', 'SL', 'Giá', 'Trạng Thái', 'Trạng Thái Đơn'].map(h => (
+                                    <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#666' }}>⏳ Đang tải...</td></tr>
+                            ) : items.length === 0 ? (
+                                <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#666' }}>Không có sản phẩm nào</td></tr>
+                            ) : items.map((li: any, idx: number) => {
+                                const brand = getBrand(li);
+                                const itemInfo = ITEM_STATE_LABELS[li.itemState] || ITEM_STATE_LABELS.PENDING;
+                                const orderInfo = ORDER_STATE_LABELS[li.order?.pipelineState] || { label: li.order?.pipelineState, color: '#888' };
+                                const rowNum = (page - 1) * limit + idx + 1;
+                                const isSelected = selected.has(li.id);
+                                return (
+                                    <tr key={li.id} style={{
+                                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                        background: isSelected ? 'rgba(99,102,241,0.08)' : undefined,
+                                    }}>
+                                        <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => toggleSelect(li.id)}
+                                                style={{ accentColor: '#6366f1', cursor: 'pointer', width: 16, height: 16 }}
+                                            />
+                                        </td>
+                                        <td style={{ padding: '10px 8px', textAlign: 'center', color: '#555', fontSize: 12, fontFamily: 'monospace' }}>
+                                            {rowNum}
+                                        </td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            <Link href={`/orders/${li.order?.id}`} style={{ color: '#3b82f6', textDecoration: 'none', fontWeight: 600, fontSize: 13 }}>
+                                                {li.order?.orderNumber}
+                                            </Link>
+                                        </td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            {brand ? (
+                                                <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#8b5cf622', color: '#8b5cf6' }}>{brand}</span>
+                                            ) : <span style={{ color: '#555' }}>—</span>}
+                                        </td>
+                                        <td style={{ padding: '10px 12px', color: '#ddd', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>
+                                            {li.title}
+                                        </td>
+                                        <td style={{ padding: '10px 12px', color: '#aaa', fontFamily: 'monospace', fontSize: 11 }}>{li.sku || '—'}</td>
+                                        <td style={{ padding: '10px 12px', color: '#fff', fontWeight: 600 }}>{li.quantity}</td>
+                                        <td style={{ padding: '10px 12px', color: '#aaa', fontSize: 13 }}>${parseFloat(li.unitPrice).toFixed(2)}</td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: itemInfo.bg, color: itemInfo.color }}>
+                                                {itemInfo.label}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '10px 12px' }}>
+                                            <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: orderInfo.color + '22', color: orderInfo.color }}>
+                                                {orderInfo.label}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {/* Pagination */}

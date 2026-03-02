@@ -187,6 +187,10 @@ export class OrderSyncService {
                 where: { id: existing.id },
                 data: updateData,
             });
+
+            // Also sync line items for existing orders (they may be missing)
+            await this.syncLineItems(existing.id, so.line_items || []);
+
             return 'updated';
         }
 
@@ -226,7 +230,14 @@ export class OrderSyncService {
         });
 
         // Create line items
-        for (const li of so.line_items || []) {
+        await this.syncLineItems(order.id, so.line_items || []);
+
+        return 'created';
+    }
+
+    /** Sync line items for an order — upsert to avoid duplicates */
+    private async syncLineItems(orderId: string, lineItems: any[]) {
+        for (const li of lineItems) {
             let colorwayId: string | null = null;
             let mappingStatus = 'UNMAPPED';
 
@@ -240,24 +251,47 @@ export class OrderSyncService {
                 }
             }
 
-            await this.prisma.orderLineItem.create({
-                data: {
-                    orderId: order.id,
+            // Check if line item already exists (by shopifyLineItemId)
+            const existing = await this.prisma.orderLineItem.findFirst({
+                where: {
+                    orderId,
                     shopifyLineItemId: BigInt(li.id),
-                    shopifyVariantId: li.variant_id ? BigInt(li.variant_id) : null,
-                    title: li.title,
-                    sku: li.sku,
-                    quantity: li.quantity,
-                    unitPrice: parseFloat(li.price),
-                    totalPrice: parseFloat(li.price) * li.quantity,
-                    colorwayId,
-                    mappingStatus,
-                    itemState: 'PENDING',
                 },
             });
-        }
 
-        return 'created';
+            if (existing) {
+                // Update existing line item (quantity, price may change)
+                await this.prisma.orderLineItem.update({
+                    where: { id: existing.id },
+                    data: {
+                        title: li.title,
+                        sku: li.sku,
+                        quantity: li.quantity,
+                        unitPrice: parseFloat(li.price),
+                        totalPrice: parseFloat(li.price) * li.quantity,
+                        colorwayId,
+                        mappingStatus,
+                    },
+                });
+            } else {
+                // Create new line item
+                await this.prisma.orderLineItem.create({
+                    data: {
+                        orderId,
+                        shopifyLineItemId: BigInt(li.id),
+                        shopifyVariantId: li.variant_id ? BigInt(li.variant_id) : null,
+                        title: li.title,
+                        sku: li.sku,
+                        quantity: li.quantity,
+                        unitPrice: parseFloat(li.price),
+                        totalPrice: parseFloat(li.price) * li.quantity,
+                        colorwayId,
+                        mappingStatus,
+                        itemState: 'PENDING',
+                    },
+                });
+            }
+        }
     }
 
     /** Process a Shopify webhook payload */

@@ -428,6 +428,14 @@ class ApiClient {
         });
     }
 
+    async updateMerchandiseItemState(itemId: string, itemState: string) {
+        return this.request<{ data: any }>(`/api/v1/merchandise/${itemId}/state`, {
+            method: 'PATCH',
+            body: JSON.stringify({ itemState }),
+            headers: { 'Content-Type': 'application/json' },
+        });
+    }
+
     // ─── Tasks ───────────────────────────────────────────────
     async getTasks(params?: Record<string, string>) {
         const qs = params ? '?' + new URLSearchParams(params).toString() : '';

@@ -10,6 +10,8 @@ import {
     Request,
     Headers,
     HttpCode,
+    NotFoundException,
+    BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrderPipelineService } from './order-pipeline.service';
@@ -136,6 +138,25 @@ export class OrderPipelineController {
             page: page ? parseInt(page) : 1,
             limit: limit ? parseInt(limit) : 50,
         });
+    }
+
+    /* ── Merchandise Item State ── */
+
+    @UseGuards(JwtAuthGuard)
+    @Patch('merchandise/:id/state')
+    async updateMerchandiseItemState(
+        @Param('id') id: string,
+        @Body() body: { itemState: string },
+    ) {
+        const validStates = ['PENDING', 'IN_STOCK', 'NEEDS_PURCHASE'];
+        if (!validStates.includes(body.itemState)) {
+            throw new NotFoundException(`Invalid item state: ${body.itemState}`);
+        }
+        const item = await this.pipeline['prisma'].orderLineItem.update({
+            where: { id },
+            data: { itemState: body.itemState },
+        });
+        return { data: item };
     }
 
     /* ── Pipeline Dashboard ── */
