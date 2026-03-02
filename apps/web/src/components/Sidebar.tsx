@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
@@ -47,6 +48,21 @@ const roleColors: Record<string, string> = {
 export default function Sidebar() {
     const pathname = usePathname();
     const { user, logout } = useAuth();
+    const [mobileOpen, setMobileOpen] = useState(false);
+
+    // Close sidebar on route change (mobile)
+    useEffect(() => {
+        setMobileOpen(false);
+    }, [pathname]);
+
+    // Close sidebar on escape key
+    useEffect(() => {
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setMobileOpen(false);
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, []);
 
     const isActive = (href: string) => {
         if (href === '/') return pathname === '/';
@@ -54,55 +70,71 @@ export default function Sidebar() {
     };
 
     return (
-        <aside className="sidebar">
-            <div className="sidebar-header">
-                <div className="sidebar-logo">
-                    INS Hub <span>v1.0</span>
+        <>
+            {/* Mobile hamburger button */}
+            <button
+                className="mobile-menu-btn"
+                onClick={() => setMobileOpen(!mobileOpen)}
+                aria-label="Toggle menu"
+            >
+                {mobileOpen ? '✕' : '☰'}
+            </button>
+
+            {/* Overlay for mobile */}
+            {mobileOpen && (
+                <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />
+            )}
+
+            <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
+                <div className="sidebar-header">
+                    <div className="sidebar-logo">
+                        INS Hub <span>v1.1</span>
+                    </div>
                 </div>
-            </div>
 
-            <nav className="sidebar-nav">
-                {navSections.map((section) => {
-                    const items = section.items.filter(
-                        (item: any) => !item.adminOnly || user?.role === 'admin'
-                    );
-                    if (items.length === 0) return null;
-                    return (
-                        <div key={section.title} className="nav-section">
-                            <div className="nav-section-title">{section.title}</div>
-                            {items.map((item: any) => (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    className={`nav-item ${isActive(item.href) ? 'nav-item-active' : ''}`}
-                                >
-                                    <span className="nav-icon">{item.icon}</span>
-                                    {item.label}
-                                </Link>
-                            ))}
-                        </div>
-                    );
-                })}
-            </nav>
+                <nav className="sidebar-nav">
+                    {navSections.map((section) => {
+                        const items = section.items.filter(
+                            (item: any) => !item.adminOnly || user?.role === 'admin'
+                        );
+                        if (items.length === 0) return null;
+                        return (
+                            <div key={section.title} className="nav-section">
+                                <div className="nav-section-title">{section.title}</div>
+                                {items.map((item: any) => (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        className={`nav-item ${isActive(item.href) ? 'nav-item-active' : ''}`}
+                                    >
+                                        <span className="nav-icon">{item.icon}</span>
+                                        <span className="nav-label">{item.label}</span>
+                                    </Link>
+                                ))}
+                            </div>
+                        );
+                    })}
+                </nav>
 
-            {user && (
-                <div className="sidebar-footer">
-                    <div className="user-card">
-                        <div className="user-avatar">
-                            {user.fullName?.charAt(0)?.toUpperCase() || '?'}
-                        </div>
-                        <div className="user-info">
-                            <div className="user-name">{user.fullName}</div>
-                            <div className="user-role" style={{ color: roleColors[user.role] || '#888' }}>
-                                {user.role}
+                {user && (
+                    <div className="sidebar-footer">
+                        <div className="user-card">
+                            <div className="user-avatar">
+                                {user.fullName?.charAt(0)?.toUpperCase() || '?'}
+                            </div>
+                            <div className="user-info">
+                                <div className="user-name">{user.fullName}</div>
+                                <div className="user-role" style={{ color: roleColors[user.role] || '#888' }}>
+                                    {user.role}
+                                </div>
                             </div>
                         </div>
+                        <button className="logout-btn" onClick={logout} title="Logout">
+                            ⏻
+                        </button>
                     </div>
-                    <button className="logout-btn" onClick={logout} title="Logout">
-                        ⏻
-                    </button>
-                </div>
-            )}
-        </aside>
+                )}
+            </aside>
+        </>
     );
 }
