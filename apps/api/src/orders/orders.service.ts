@@ -19,20 +19,25 @@ export class OrdersService {
         status?: string;
         financialStatus?: string;
         fulfillmentStatus?: string;
+        pipelineState?: string;
+        shopifyStoreId?: string;
         search?: string;
         page?: number;
         limit?: number;
     }) {
-        const { status, financialStatus, fulfillmentStatus, search, page = 1, limit = 50 } = query;
+        const { status, financialStatus, fulfillmentStatus, pipelineState, shopifyStoreId, search, page = 1, limit = 50 } = query;
         const where: any = {};
 
         if (status) where.status = status;
         if (financialStatus) where.financialStatus = financialStatus;
         if (fulfillmentStatus) where.fulfillmentStatus = fulfillmentStatus;
+        if (pipelineState) where.pipelineState = pipelineState;
+        if (shopifyStoreId) where.shopifyStoreId = shopifyStoreId;
         if (search) {
             where.OR = [
                 { orderNumber: { contains: search, mode: 'insensitive' } },
                 { customerEmail: { contains: search, mode: 'insensitive' } },
+                { customerName: { contains: search, mode: 'insensitive' } },
             ];
         }
 
@@ -50,7 +55,7 @@ export class OrdersService {
             this.prisma.order.count({ where }),
         ]);
 
-        return { data, meta: { page, limit, total } };
+        return { data: data.map((o) => this.serializeOrder(o)), meta: { page, limit, total } };
     }
 
     async findById(id: string) {
@@ -75,7 +80,7 @@ export class OrdersService {
             },
         });
         if (!order) throw new NotFoundException('Order not found');
-        return { data: order };
+        return { data: this.serializeOrder(order) };
     }
 
     async updateStatus(
@@ -182,6 +187,15 @@ export class OrdersService {
                 })),
             },
         };
+    }
+
+    async getOrderLogs(orderId: string) {
+        const logs = await this.prisma.orderLog.findMany({
+            where: { orderId },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+        });
+        return { data: logs };
     }
 
     /* BigInt serialization helper */

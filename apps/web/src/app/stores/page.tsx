@@ -26,6 +26,9 @@ export default function StoresPage() {
     const [testingId, setTestingId] = useState<string | null>(null);
     const [testResult, setTestResult] = useState<any>(null);
 
+    // Sync Orders
+    const [syncingId, setSyncingId] = useState<string | null>(null);
+
     // Sync logs
     const [selectedStore, setSelectedStore] = useState<any>(null);
     const [syncLogs, setSyncLogs] = useState<any[]>([]);
@@ -33,6 +36,10 @@ export default function StoresPage() {
 
     // Toast
     const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+    const showToast = (msg: string, ok = true) => {
+        setToast({ msg, ok });
+        setTimeout(() => setToast(null), 3000);
+    };
 
     const load = async () => {
         setLoading(true);
@@ -129,6 +136,19 @@ export default function StoresPage() {
         finally { setLogsLoading(false); }
     };
 
+    const handleSyncOrders = async (store: any) => {
+        setSyncingId(store.id);
+        try {
+            const res = await api.syncStoreOrders(store.id, 10);
+            showToast(`Đồng bộ xong: ${res.data.created} mới, ${res.data.updated} cập nhật`);
+            load();
+        } catch (err: any) {
+            showToast(err.message, false);
+        } finally {
+            setSyncingId(null);
+        }
+    };
+
     return (
         <>
             {toast && (
@@ -209,6 +229,11 @@ export default function StoresPage() {
                                 </div>
 
                                 <div className="store-card-actions">
+                                    <button className="btn-sm btn-primary" onClick={() => handleSyncOrders(store)}
+                                        disabled={syncingId === store.id || !store.isActive}
+                                        style={{ fontWeight: 600 }}>
+                                        {syncingId === store.id ? '⏳ Đang đồng bộ...' : '🔄 Sync Orders'}
+                                    </button>
                                     <button className="btn-sm btn-ghost" onClick={() => handleTest(store.id)}
                                         disabled={testingId === store.id}>
                                         {testingId === store.id ? '⏳' : '🔌'} Test

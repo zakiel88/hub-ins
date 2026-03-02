@@ -25,7 +25,8 @@ model Warehouse {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  inventoryItems InventoryItem[]
+  inventoryItems        InventoryItem[]
+  inventoryReservations InventoryReservation[]
 
   @@map("warehouses")
 }
@@ -45,6 +46,7 @@ model ShopifyStore {
   tokenLastRotatedAt DateTime? @map("token_last_rotated_at") @db.Timestamptz()
   apiVersion         String    @default("2025-01") @map("api_version") @db.VarChar(20)
   isActive           Boolean   @default(true) @map("is_active")
+  initialSyncDone    Boolean   @default(false) @map("initial_sync_done")
   lastSyncAt         DateTime? @map("last_sync_at") @db.Timestamptz()
   webhookSecret      String?   @map("webhook_secret")
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
@@ -56,6 +58,7 @@ model ShopifyStore {
   pricePublishLogs       PricePublishLog[]
   syncLogs               SyncLog[]
   webhookEvents          WebhookEvent[]
+  userAccess             UserStoreAccess[]
 
   @@map("shopify_stores")
 }
@@ -88,10 +91,31 @@ model User {
   pricePublishLogs     PricePublishLog[]
   auditLogs            AuditLog[]
   passwordResetTokens  PasswordResetToken[]
+  tasksAssigned        Task[]          @relation("TaskAssignee")
+  taskComments         TaskComment[]
+  purchaseOrders       PurchaseOrder[] @relation("POCreator")
+
+  storeAccess          UserStoreAccess[]
 
   @@index([role], name: "idx_users_role")
   @@index([brandId], name: "idx_users_brand")
   @@map("users")
+}
+
+model UserStoreAccess {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  shopifyStoreId String   @map("shopify_store_id") @db.Uuid
+  accessLevel    String   @default("viewer") @map("access_level") @db.VarChar(20)  // viewer, editor, admin
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user  User        @relation(fields: [userId], references: [id])
+  store ShopifyStore @relation(fields: [shopifyStoreId], references: [id])
+
+  @@unique([userId, shopifyStoreId])
+  @@index([userId], name: "idx_usa_user")
+  @@index([shopifyStoreId], name: "idx_usa_store")
+  @@map("user_store_access")
 }
 
 model Brand {
@@ -112,11 +136,13 @@ model Brand {
   users       User[]    @relation("UserBrand")
 
   // Other relations
-  collections    Collection[]
-  contracts      Contract[]
-  brandContacts  BrandContact[]
-  importBatches  ImportBatch[]
-  orderLineItems OrderLineItem[]
+  collections          Collection[]
+  contracts            Contract[]
+  brandContacts        BrandContact[]
+  importBatches        ImportBatch[]
+  orderLineItems       OrderLineItem[]
+  procurementRequests  ProcurementRequest[]
+  purchaseOrders       PurchaseOrder[]
 
   @@index([status], name: "idx_brands_status")
   @@index([ownerUserId], name: "idx_brands_owner")
@@ -223,6 +249,7 @@ model Colorway {
   inventoryItems InventoryItem[]
   orderLineItems OrderLineItem[]
   shopifyMappings ShopifyProductMapping[]
+  inventoryReservations InventoryReservation[]
 
   @@index([productId], name: "idx_colorways_product")
   @@index([barcode], name: "idx_colorways_barcode")
@@ -291,7 +318,23 @@ model Order {
   status             String    @default("open") @db.VarChar(20)
   financialStatus    String?   @map("financial_status") @db.VarChar(30)
   fulfillmentStatus  String?   @map("fulfillment_status") @db.VarChar(30)
+  // — Phase 1: customer & address —
   customerEmail      String?   @map("customer_email") @db.VarChar(255)
+  customerName       String?   @map("customer_name") @db.VarChar(255)
+  customerPhone      String?   @map("customer_phone") @db.VarChar(50)
+  shippingAddress    Json?     @map("shipping_address")
+  shippingCountry    String?   @map("shipping_country") @db.VarChar(10)
+  shippingCity       String?   @map("shipping_city") @db.VarChar(100)
+  // — Phase 1: pipeline state machine —
+  pipelineState      String    @default("NEW_FROM_SHOPIFY") @map("pipeline_state") @db.VarChar(40)
+  flags              Json?     @default("{}")
+  notes              String?
+  // — Phase 1: fulfillment tracking —
+  trackingNumber     String?   @map("tracking_number") @db.VarChar(255)
+  trackingCompany    String?   @map("tracking_company") @db.VarChar(100)
+  trackingUrl        String?   @map("tracking_url")
+  shopifyRawPayload  Json?     @map("shopify_raw_payload")
+  // — common —
   totalPrice         Decimal   @map("total_price") @db.Decimal(10, 2)
   currency           String    @db.VarChar(3)
   orderDate          DateTime  @map("order_date") @db.Timestamptz()
@@ -300,9 +343,12 @@ model Order {
 
   shopifyStore ShopifyStore    @relation(fields: [shopifyStoreId], references: [id])
   lineItems    OrderLineItem[]
+  tasks        Task[]
+  orderLogs    OrderLog[]
 
   @@unique([shopifyStoreId, shopifyOrderId], name: "uq_order_store_shopify")
   @@index([status], name: "idx_orders_status")
+  @@index([pipelineState], name: "idx_orders_pipeline_state")
   @@index([orderDate], name: "idx_orders_date")
   @@map("orders")
 }
@@ -313,21 +359,151 @@ model OrderLineItem {
   colorwayId          String?  @map("colorway_id") @db.Uuid
   brandId             String?  @map("brand_id") @db.Uuid
   shopifyLineItemId   BigInt   @map("shopify_line_item_id")
+  shopifyVariantId    BigInt?  @map("shopify_variant_id")
   title               String   @db.VarChar(255)
   sku                 String?  @db.VarChar(100)
   quantity            Int
   unitPrice           Decimal  @map("unit_price") @db.Decimal(10, 2)
   totalPrice          Decimal  @map("total_price") @db.Decimal(10, 2)
+  mappingStatus       String   @default("UNMAPPED") @map("mapping_status") @db.VarChar(20)
+  itemState           String   @default("PENDING") @map("item_state") @db.VarChar(30)
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  order    Order     @relation(fields: [orderId], references: [id])
-  colorway Colorway? @relation(fields: [colorwayId], references: [id])
-  brand    Brand?    @relation(fields: [brandId], references: [id])
+  order                  Order                  @relation(fields: [orderId], references: [id])
+  colorway               Colorway?              @relation(fields: [colorwayId], references: [id])
+  brand                  Brand?                 @relation(fields: [brandId], references: [id])
+  inventoryReservations  InventoryReservation[]
+  procurementRequests    ProcurementRequest[]
 
+  @@unique([orderId, shopifyLineItemId], name: "uq_oli_order_shopify")
   @@index([orderId], name: "idx_oli_order")
   @@index([colorwayId], name: "idx_oli_colorway")
   @@index([brandId], name: "idx_oli_brand")
+  @@index([itemState], name: "idx_oli_item_state")
   @@map("order_line_items")
+}
+
+// ═══════════════════════════════════════
+// Phase 1 — Order Pipeline: Tasks, Reservations, Procurement
+// ═══════════════════════════════════════
+
+model Task {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String    @db.VarChar(30)
+  orderId     String    @map("order_id") @db.Uuid
+  assigneeId  String?   @map("assignee_id") @db.Uuid
+  status      String    @default("OPEN") @db.VarChar(20)
+  priority    String    @default("NORMAL") @db.VarChar(20)
+  dueAt       DateTime? @map("due_at") @db.Timestamptz()
+  completedAt DateTime? @map("completed_at") @db.Timestamptz()
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  order    Order  @relation(fields: [orderId], references: [id])
+  assignee User?  @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  comments TaskComment[]
+
+  @@index([orderId], name: "idx_tasks_order")
+  @@index([type], name: "idx_tasks_type")
+  @@index([status], name: "idx_tasks_status")
+  @@index([assigneeId], name: "idx_tasks_assignee")
+  @@map("tasks")
+}
+
+model TaskComment {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @map("task_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  content   String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  task Task @relation(fields: [taskId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([taskId], name: "idx_tc_task")
+  @@map("task_comments")
+}
+
+model InventoryReservation {
+  id          String    @id @default(uuid()) @db.Uuid
+  orderItemId String    @map("order_item_id") @db.Uuid
+  colorwayId  String?   @map("colorway_id") @db.Uuid
+  sku         String    @db.VarChar(100)
+  warehouseId String    @map("warehouse_id") @db.Uuid
+  qtyReserved Int       @map("qty_reserved")
+  status      String    @default("ACTIVE") @db.VarChar(20)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  orderItem OrderLineItem @relation(fields: [orderItemId], references: [id])
+  colorway  Colorway?     @relation(fields: [colorwayId], references: [id])
+  warehouse Warehouse     @relation(fields: [warehouseId], references: [id])
+
+  @@index([orderItemId], name: "idx_ir_order_item")
+  @@index([warehouseId], name: "idx_ir_warehouse")
+  @@map("inventory_reservations")
+}
+
+model ProcurementRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  orderItemId String    @map("order_item_id") @db.Uuid
+  brandId     String?   @map("brand_id") @db.Uuid
+  sku         String    @db.VarChar(100)
+  qtyNeeded   Int       @map("qty_needed")
+  status      String    @default("OPEN") @db.VarChar(20)
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  orderItem OrderLineItem       @relation(fields: [orderItemId], references: [id])
+  brand     Brand?              @relation(fields: [brandId], references: [id])
+  poItems   PurchaseOrderItem[]
+
+  @@index([orderItemId], name: "idx_pr_order_item")
+  @@index([brandId], name: "idx_pr_brand")
+  @@index([status], name: "idx_pr_status")
+  @@map("procurement_requests")
+}
+
+model PurchaseOrder {
+  id          String    @id @default(uuid()) @db.Uuid
+  poNumber    String    @unique @map("po_number") @db.VarChar(50)
+  brandId     String    @map("brand_id") @db.Uuid
+  status      String    @default("DRAFT") @db.VarChar(20)
+  issuedAt    DateTime? @map("issued_at") @db.Timestamptz()
+  notes       String?
+  totalAmount Decimal?  @map("total_amount") @db.Decimal(12, 2)
+  currency    String?   @db.VarChar(3)
+  createdBy   String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  brand   Brand               @relation(fields: [brandId], references: [id])
+  creator User                @relation("POCreator", fields: [createdBy], references: [id])
+  items   PurchaseOrderItem[]
+
+  @@index([brandId], name: "idx_po_brand")
+  @@index([status], name: "idx_po_status")
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  poId      String   @map("po_id") @db.Uuid
+  prId      String?  @map("pr_id") @db.Uuid
+  sku       String   @db.VarChar(100)
+  title     String?  @db.VarChar(255)
+  qty       Int
+  unitCost  Decimal? @map("unit_cost") @db.Decimal(10, 2)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  purchaseOrder      PurchaseOrder       @relation(fields: [poId], references: [id])
+  procurementRequest ProcurementRequest? @relation(fields: [prId], references: [id])
+
+  @@index([poId], name: "idx_poi_po")
+  @@index([prId], name: "idx_poi_pr")
+  @@map("purchase_order_items")
 }
 
 model InventoryItem {
@@ -451,6 +627,7 @@ model WebhookEvent {
   status            String    @default("received") @db.VarChar(20)
   attempts          Int       @default(0)
   payloadHash       String?   @map("payload_hash") @db.VarChar(64)
+  rawPayload        Json?     @map("raw_payload")
   errorMessage      String?   @map("error_message")
   receivedAt        DateTime  @default(now()) @map("received_at") @db.Timestamptz()
   processedAt       DateTime? @map("processed_at") @db.Timestamptz()
@@ -461,6 +638,22 @@ model WebhookEvent {
   @@index([shopifyStoreId, topic], name: "idx_we_store_topic")
   @@index([status], name: "idx_we_status")
   @@map("webhook_events")
+}
+
+model OrderLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  orderId         String   @map("order_id") @db.Uuid
+  source          String   @db.VarChar(20)   // webhook, manual, sync
+  shopifyTopic    String?  @map("shopify_topic") @db.VarChar(50)
+  changedFields   Json     @map("changed_fields")
+  rawPayload      Json?    @map("raw_payload")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId], name: "idx_ol_order")
+  @@index([createdAt], name: "idx_ol_created")
+  @@map("order_logs")
 }
 
 model AuditLog {

@@ -23,8 +23,10 @@ const navSections = [
         title: 'Operations',
         items: [
             { label: 'Stores', href: '/stores', icon: '🏪' },
-            { label: 'Orders', href: '/orders', icon: '🛒' },
-            { label: 'Inventory', href: '/inventory', icon: '📋' },
+            { label: 'Orders', href: '/orders', icon: '📋' },
+            { label: 'Merchandise', href: '/merchandise', icon: '👕' },
+            { label: 'Inventory', href: '/inventory', icon: '📦' },
+            { label: 'Procurement', href: '/procurement', icon: '📝' },
         ],
     },
     {

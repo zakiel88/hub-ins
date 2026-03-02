@@ -251,6 +251,10 @@ class ApiClient {
         return this.request<{ data: any }>('/api/v1/orders/summary');
     }
 
+    async getOrderLogs(orderId: string) {
+        return this.request<{ data: any[] }>(`/api/v1/orders/${orderId}/logs`);
+    }
+
     async createOrder(data: any) {
         return this.request<{ data: any }>('/api/v1/orders', {
             method: 'POST', body: JSON.stringify(data),
@@ -361,6 +365,141 @@ class ApiClient {
     async resetPassword(token: string, newPassword: string) {
         return this.request<{ success: boolean; message: string }>('/api/v1/auth/reset-password', {
             method: 'POST', body: JSON.stringify({ token, newPassword }),
+        });
+    }
+
+    // ─── Order Pipeline (Phase 1) ────────────────────────────
+    async transitionOrder(orderId: string, targetState: string, reason?: string) {
+        return this.request<{ data: any }>(`/api/v1/orders/${orderId}/transition`, {
+            method: 'POST', body: JSON.stringify({ targetState, reason }),
+        });
+    }
+
+    async setOrderFlags(orderId: string, flags: Record<string, boolean>) {
+        return this.request<{ data: any }>(`/api/v1/orders/${orderId}/flags`, {
+            method: 'POST', body: JSON.stringify({ flags }),
+        });
+    }
+
+    async checkItemStock(orderId: string, itemId: string, action: 'IN_STOCK' | 'NEEDS_PURCHASE') {
+        return this.request<{ data: any; createdPR?: boolean }>(`/api/v1/orders/${orderId}/items/${itemId}/check-stock`, {
+            method: 'POST', body: JSON.stringify({ action }),
+        });
+    }
+
+    async validateAddress(orderId: string) {
+        return this.request<any>(`/api/v1/orders/${orderId}/validate-address`, {
+            method: 'POST',
+        });
+    }
+
+    async getMerchandise(params?: { itemState?: string; orderState?: string; brandId?: string; search?: string; includeFulfilled?: boolean; page?: number; limit?: number }) {
+        const qs = new URLSearchParams();
+        if (params?.itemState) qs.set('itemState', params.itemState);
+        if (params?.orderState) qs.set('orderState', params.orderState);
+        if (params?.brandId) qs.set('brandId', params.brandId);
+        if (params?.search) qs.set('search', params.search);
+        if (params?.includeFulfilled) qs.set('includeFulfilled', 'true');
+        if (params?.page) qs.set('page', String(params.page));
+        if (params?.limit) qs.set('limit', String(params.limit));
+        const q = qs.toString();
+        return this.request<any>(`/api/v1/merchandise${q ? '?' + q : ''}`);
+    }
+
+    async checkStockAll(orderId: string) {
+        return this.request<{ data: any[] }>(`/api/v1/orders/${orderId}/check-stock`);
+    }
+
+    async markItemsBulk(orderId: string, itemIds: string[], action: 'IN_STOCK' | 'NEEDS_PURCHASE') {
+        return this.request<{ data: any; createdPRs?: number }>(`/api/v1/orders/${orderId}/mark-items`, {
+            method: 'POST', body: JSON.stringify({ itemIds, action }),
+        });
+    }
+
+    async getPipelineSummary() {
+        return this.request<{ data: any }>('/api/v1/pipeline/summary');
+    }
+
+    async syncStoreOrders(storeId: string, limit = 50) {
+        return this.request<{ data: any }>(`/api/v1/shopify-stores/${storeId}/sync-orders?limit=${limit}`, {
+            method: 'POST',
+        });
+    }
+
+    // ─── Tasks ───────────────────────────────────────────────
+    async getTasks(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/tasks${qs}`);
+    }
+
+    async getTask(id: string) {
+        return this.request<{ data: any }>(`/api/v1/tasks/${id}`);
+    }
+
+    async createTask(data: { type: string; orderId: string; assigneeId?: string; notes?: string }) {
+        return this.request<{ data: any }>('/api/v1/tasks', {
+            method: 'POST', body: JSON.stringify(data),
+        });
+    }
+
+    async updateTaskStatus(id: string, status: string) {
+        return this.request<{ data: any }>(`/api/v1/tasks/${id}/status`, {
+            method: 'PATCH', body: JSON.stringify({ status }),
+        });
+    }
+
+    async assignTask(id: string, assigneeId: string) {
+        return this.request<{ data: any }>(`/api/v1/tasks/${id}/assign`, {
+            method: 'PATCH', body: JSON.stringify({ assigneeId }),
+        });
+    }
+
+    async addTaskComment(taskId: string, content: string) {
+        return this.request<{ data: any }>(`/api/v1/tasks/${taskId}/comments`, {
+            method: 'POST', body: JSON.stringify({ content }),
+        });
+    }
+
+    async getTasksSummary() {
+        return this.request<{ data: any }>('/api/v1/tasks/summary');
+    }
+
+    // ─── Procurement ─────────────────────────────────────────
+    async createPR(data: { orderItemId: string; brandId: string; sku: string; qtyNeeded: number; notes?: string }) {
+        return this.request<{ data: any }>('/api/v1/procurement/pr', {
+            method: 'POST', body: JSON.stringify(data),
+        });
+    }
+
+    async getPRs(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/procurement/pr${qs}`);
+    }
+
+    async createPO(data: { brandId: string; prIds: string[]; notes?: string; currency?: string }) {
+        return this.request<{ data: any }>('/api/v1/procurement/po', {
+            method: 'POST', body: JSON.stringify(data),
+        });
+    }
+
+    async getPOs(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/procurement/po${qs}`);
+    }
+
+    async getPO(id: string) {
+        return this.request<{ data: any }>(`/api/v1/procurement/po/${id}`);
+    }
+
+    async updatePRStatus(id: string, status: string) {
+        return this.request<{ data: any }>(`/api/v1/procurement/pr/${id}/status`, {
+            method: 'PATCH', body: JSON.stringify({ status }),
+        });
+    }
+
+    async updatePOStatus(id: string, status: string) {
+        return this.request<{ data: any }>(`/api/v1/procurement/po/${id}/status`, {
+            method: 'PATCH', body: JSON.stringify({ status }),
         });
     }
 }

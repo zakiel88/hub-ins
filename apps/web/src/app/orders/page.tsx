@@ -3,226 +3,190 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
+const ALL_STATES = [
+    'NEW_FROM_SHOPIFY', 'NEEDS_CX', 'READY_FOR_MER', 'WAITING_STOCK',
+    'NEEDS_PROCUREMENT', 'PROCUREMENT_IN_PROGRESS', 'READY_TO_FULFILL',
+    'FULFILLED', 'ON_HOLD', 'CANCELLED',
+];
+
+const STATE_COLORS: Record<string, string> = {
+    NEW_FROM_SHOPIFY: '#3b82f6', NEEDS_CX: '#f59e0b', READY_FOR_MER: '#8b5cf6',
+    CHECKING_ADDRESS: '#f59e0b', MER_CHECK: '#8b5cf6',
+    WAITING_PURCHASE: '#ef4444',
+    READY_TO_FULFILL: '#22c55e', FULFILLED: '#10b981', ON_HOLD: '#6b7280', CANCELLED: '#991b1b',
+};
+
+const STATE_LABELS: Record<string, string> = {
+    NEW_FROM_SHOPIFY: 'Đơn mới', CHECKING_ADDRESS: 'Đang check', MER_CHECK: 'MER Check',
+    WAITING_PURCHASE: 'Đợi mua',
+    READY_TO_FULFILL: 'Sẵn sàng', FULFILLED: 'Đã giao', ON_HOLD: 'Tạm giữ', CANCELLED: 'Đã huỷ',
+};
+
 export default function OrdersPage() {
     const [orders, setOrders] = useState<any[]>([]);
-    const [meta, setMeta] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [statusFilter, setStatusFilter] = useState('');
-    const [financialFilter, setFinancialFilter] = useState('');
+    const [stateFilter, setStateFilter] = useState('');
+    const [storeFilter, setStoreFilter] = useState('');
     const [search, setSearch] = useState('');
-    const [selectedOrder, setSelectedOrder] = useState<any>(null);
-    const [detailLoading, setDetailLoading] = useState(false);
+    const [searchInput, setSearchInput] = useState('');
+    const [summary, setSummary] = useState<any>(null);
+    const [stores, setStores] = useState<any[]>([]);
 
     const load = async () => {
         setLoading(true);
         try {
             const params: Record<string, string> = {};
-            if (statusFilter) params.status = statusFilter;
-            if (financialFilter) params.financialStatus = financialFilter;
+            if (stateFilter) params.pipelineState = stateFilter;
+            if (storeFilter) params.shopifyStoreId = storeFilter;
             if (search) params.search = search;
-            const res = await api.getOrders(Object.keys(params).length ? params : undefined);
-            setOrders(res.data);
-            setMeta(res.meta);
-        } catch {
-            window.location.href = '/login';
-        } finally {
-            setLoading(false);
-        }
+            const [ordRes, sumRes, storesRes] = await Promise.all([
+                api.getOrders(Object.keys(params).length ? params : undefined),
+                api.getPipelineSummary(),
+                api.getStores().catch(() => ({ data: [] })),
+            ]);
+            setOrders(ordRes.data);
+            setSummary(sumRes.data);
+            setStores(storesRes.data || []);
+        } catch { /* */ } finally { setLoading(false); }
     };
 
-    useEffect(() => { load(); }, [statusFilter, financialFilter]);
+    useEffect(() => { load(); }, [stateFilter, storeFilter, search]);
 
-    const viewOrder = async (id: string) => {
-        setDetailLoading(true);
-        try {
-            const res = await api.getOrder(id);
-            setSelectedOrder(res.data);
-        } catch (err: any) {
-            alert(err.message);
-        } finally {
-            setDetailLoading(false);
-        }
+    // Debounce search
+    useEffect(() => {
+        const t = setTimeout(() => setSearch(searchInput), 400);
+        return () => clearTimeout(t);
+    }, [searchInput]);
+
+    const fmtPrice = (p: any) => {
+        const n = typeof p === 'string' ? parseFloat(p) : (p ?? 0);
+        return `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
     };
 
-    const handleStatusUpdate = async (orderId: string, newStatus: string) => {
-        if (!confirm(`Change order status to "${newStatus}"?`)) return;
-        try {
-            await api.updateOrderStatus(orderId, newStatus);
-            const res = await api.getOrder(orderId);
-            setSelectedOrder(res.data);
-            load();
-        } catch (err: any) { alert(err.message); }
-    };
-
-    const statusClass = (status: string) => {
-        const map: Record<string, string> = {
-            open: 'badge-info', closed: 'badge-muted', cancelled: 'badge-error',
-            paid: 'badge-success', pending: 'badge-warning', refunded: 'badge-error',
-            fulfilled: 'badge-success', unfulfilled: 'badge-warning', partial: 'badge-info',
-        };
-        return `status-badge ${map[status] || 'badge-muted'}`;
+    const timeAgo = (d: string) => {
+        const diff = Date.now() - new Date(d).getTime();
+        const hrs = Math.floor(diff / 3600000);
+        if (hrs < 1) return `${Math.floor(diff / 60000)}m ago`;
+        if (hrs < 24) return `${hrs}h ago`;
+        return `${Math.floor(hrs / 24)}d ago`;
     };
 
     return (
-        <>
-            <div className="page-header">
-                <div className="page-header-row">
-                    <div>
-                        <h1 className="page-title">Orders</h1>
-                        <p className="page-subtitle">Order management & tracking</p>
-                    </div>
+        <div style={{ padding: 32 }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>Đơn hàng</h1>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    {/* Search */}
+                    <input
+                        type="text"
+                        placeholder="🔍 Tìm Order # hoặc email..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#fff', fontSize: 13, width: 220, outline: 'none' }}
+                    />
+                    {/* Store Filter */}
+                    <select
+                        value={storeFilter}
+                        onChange={(e) => setStoreFilter(e.target.value)}
+                        style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#ddd', fontSize: 13, cursor: 'pointer', minWidth: 160 }}
+                    >
+                        <option value="">Tất cả Store</option>
+                        {stores.map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.storeName}</option>
+                        ))}
+                    </select>
+                    <button onClick={load} style={{ padding: '8px 20px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
+                        ↻ Làm mới
+                    </button>
                 </div>
             </div>
 
-            <div className="page-content">
-                <div className="toolbar">
-                    <div className="filter-row">
-                        <div className="search-box">
-                            <input className="form-input" placeholder="Search order # or email…"
-                                value={search} onChange={(e) => setSearch(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && load()} />
-                            <button className="btn-ghost" onClick={load}>Search</button>
-                        </div>
-                        <select className="form-select" value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}>
-                            <option value="">All Status</option>
-                            <option value="open">Open</option>
-                            <option value="closed">Closed</option>
-                            <option value="cancelled">Cancelled</option>
-                        </select>
-                        <select className="form-select" value={financialFilter}
-                            onChange={(e) => setFinancialFilter(e.target.value)}>
-                            <option value="">All Financial</option>
-                            <option value="paid">Paid</option>
-                            <option value="pending">Pending</option>
-                            <option value="refunded">Refunded</option>
-                        </select>
+            {/* Pipeline State Cards — ALL states */}
+            {summary && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 8, marginBottom: 24 }}>
+                    {/* All Orders card */}
+                    <div
+                        onClick={() => setStateFilter('')}
+                        style={{
+                            padding: '12px 10px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
+                            background: stateFilter === '' ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                            border: stateFilter === '' ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent',
+                            transition: 'all .2s',
+                        }}
+                    >
+                        <div style={{ fontSize: 22, fontWeight: 700, color: '#fff' }}>{summary.total}</div>
+                        <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>Tất cả</div>
                     </div>
-                    {meta && <div className="toolbar-meta">{meta.total} order{meta.total !== 1 ? 's' : ''}</div>}
-                </div>
-
-                {loading ? (
-                    <div className="page-loading"><div className="spinner" /></div>
-                ) : orders.length === 0 ? (
-                    <div className="empty-state">
-                        <div className="empty-state-icon">🛒</div>
-                        <div className="empty-state-text">No orders yet. Orders will appear once connected to a Shopify store.</div>
-                    </div>
-                ) : (
-                    <div className="table-wrap">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Order #</th>
-                                    <th>Store</th>
-                                    <th>Customer</th>
-                                    <th>Status</th>
-                                    <th>Payment</th>
-                                    <th>Fulfillment</th>
-                                    <th>Total</th>
-                                    <th>Items</th>
-                                    <th>Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {orders.map((o) => (
-                                    <tr key={o.id} className="table-row-link" onClick={() => viewOrder(o.id)}>
-                                        <td><div className="cell-primary">{o.orderNumber}</div></td>
-                                        <td>{o.shopifyStore?.storeName}</td>
-                                        <td className="cell-muted">{o.customerEmail || '—'}</td>
-                                        <td><span className={statusClass(o.status)}>{o.status}</span></td>
-                                        <td><span className={statusClass(o.financialStatus || '')}>{o.financialStatus || '—'}</span></td>
-                                        <td><span className={statusClass(o.fulfillmentStatus || '')}>{o.fulfillmentStatus || '—'}</span></td>
-                                        <td className="cell-mono cell-price">{o.currency} {o.totalPrice}</td>
-                                        <td>{o._count?.lineItems ?? 0}</td>
-                                        <td className="cell-muted">{new Date(o.orderDate).toLocaleDateString()}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {selectedOrder && (
-                <div className="modal-overlay" onClick={() => setSelectedOrder(null)}>
-                    <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2 className="modal-title">Order {selectedOrder.orderNumber}</h2>
-                            <div className="header-actions">
-                                {selectedOrder.status === 'open' && (
-                                    <>
-                                        <button className="btn-sm btn-outline" onClick={() => handleStatusUpdate(selectedOrder.id, 'closed')}>Close</button>
-                                        <button className="btn-sm btn-outline btn-danger" onClick={() => handleStatusUpdate(selectedOrder.id, 'cancelled')}>Cancel</button>
-                                    </>
-                                )}
-                                {selectedOrder.status === 'closed' && (
-                                    <button className="btn-sm btn-outline" onClick={() => handleStatusUpdate(selectedOrder.id, 'open')}>Reopen</button>
-                                )}
-                                <button className="modal-close" onClick={() => setSelectedOrder(null)}>✕</button>
+                    {/* Each state */}
+                    {ALL_STATES.map((state) => {
+                        const count = (summary.byState || {})[state] || 0;
+                        return (
+                            <div
+                                key={state}
+                                onClick={() => setStateFilter(stateFilter === state ? '' : state)}
+                                style={{
+                                    padding: '12px 10px', borderRadius: 10, cursor: 'pointer', textAlign: 'center',
+                                    background: stateFilter === state ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                                    border: stateFilter === state ? `1px solid ${STATE_COLORS[state]}` : '1px solid transparent',
+                                    transition: 'all .2s', opacity: count === 0 && stateFilter !== state ? 0.4 : 1,
+                                }}
+                            >
+                                <div style={{ fontSize: 22, fontWeight: 700, color: STATE_COLORS[state] }}>{count}</div>
+                                <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>{STATE_LABELS[state]}</div>
                             </div>
-                        </div>
-                        <div className="modal-body">
-                            {detailLoading ? (
-                                <div className="page-loading"><div className="spinner" /></div>
-                            ) : (
-                                <>
-                                    <div className="order-meta-grid">
-                                        <div>
-                                            <div className="form-label">Store</div>
-                                            <div>{selectedOrder.shopifyStore?.storeName}</div>
-                                        </div>
-                                        <div>
-                                            <div className="form-label">Customer</div>
-                                            <div>{selectedOrder.customerEmail || '—'}</div>
-                                        </div>
-                                        <div>
-                                            <div className="form-label">Status</div>
-                                            <span className={statusClass(selectedOrder.status)}>{selectedOrder.status}</span>
-                                        </div>
-                                        <div>
-                                            <div className="form-label">Total</div>
-                                            <div className="cell-price">{selectedOrder.currency} {selectedOrder.totalPrice}</div>
-                                        </div>
-                                    </div>
-
-                                    <h3 style={{ marginTop: 20, marginBottom: 12, fontSize: 14, fontWeight: 600 }}>Line Items</h3>
-                                    {selectedOrder.lineItems?.length > 0 ? (
-                                        <div className="table-wrap">
-                                            <table className="data-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Item</th>
-                                                        <th>SKU</th>
-                                                        <th>Brand</th>
-                                                        <th>Qty</th>
-                                                        <th>Unit Price</th>
-                                                        <th>Total</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {selectedOrder.lineItems.map((li: any) => (
-                                                        <tr key={li.id}>
-                                                            <td><div className="cell-primary">{li.title}</div></td>
-                                                            <td><code className="code-tag">{li.sku || li.colorway?.sku || '—'}</code></td>
-                                                            <td>{li.brand?.code || li.colorway?.product?.collection?.brand?.code || '—'}</td>
-                                                            <td>{li.quantity}</td>
-                                                            <td className="cell-mono">{li.unitPrice}</td>
-                                                            <td className="cell-mono cell-price">{li.totalPrice}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    ) : (
-                                        <div className="cell-muted">No line items</div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
+                        );
+                    })}
                 </div>
             )}
-        </>
+
+            {/* Orders Table */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                            {['Store', 'Order #', 'Customer', 'Country', 'Total', 'State', 'Financial', 'Fulfillment', 'Created'].map(h => (
+                                <th key={h} style={{ padding: '12px 14px', textAlign: 'left', color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {loading ? (
+                            <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#666' }}>Đang tải...</td></tr>
+                        ) : orders.length === 0 ? (
+                            <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#666' }}>Không có đơn hàng</td></tr>
+                        ) : orders.map((o) => (
+                            <tr key={o.id} onClick={() => window.location.href = `/orders/${o.id}`}
+                                style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', transition: 'background .15s' }}
+                                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                <td style={{ padding: '12px 14px' }}>
+                                    <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'rgba(59,130,246,0.15)', color: '#60a5fa' }}>
+                                        {o.shopifyStore?.storeName || '—'}
+                                    </span>
+                                </td>
+                                <td style={{ padding: '12px 14px', color: '#3b82f6', fontWeight: 600 }}>{o.orderNumber}</td>
+                                <td style={{ padding: '12px 14px', color: '#ddd' }}>
+                                    <div>{o.customerName || '—'}</div>
+                                    <div style={{ fontSize: 11, color: '#777' }}>{o.customerEmail}</div>
+                                </td>
+                                <td style={{ padding: '12px 14px', color: '#aaa' }}>{o.shippingCountry || '—'}</td>
+                                <td style={{ padding: '12px 14px', color: '#fff', fontWeight: 600 }}>
+                                    {fmtPrice(o.totalPrice)} <span style={{ color: '#666', fontWeight: 400, fontSize: 12 }}>{o.currency}</span>
+                                </td>
+                                <td style={{ padding: '12px 14px' }}>
+                                    <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, color: '#fff', background: STATE_COLORS[o.pipelineState] || '#555' }}>
+                                        {STATE_LABELS[o.pipelineState] || o.pipelineState}
+                                    </span>
+                                </td>
+                                <td style={{ padding: '12px 14px', color: '#aaa', fontSize: 13 }}>{o.financialStatus || '—'}</td>
+                                <td style={{ padding: '12px 14px', color: '#aaa', fontSize: 13 }}>{o.fulfillmentStatus || 'unfulfilled'}</td>
+                                <td style={{ padding: '12px 14px', color: '#777', fontSize: 12 }}>{timeAgo(o.orderDate || o.createdAt)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     );
 }

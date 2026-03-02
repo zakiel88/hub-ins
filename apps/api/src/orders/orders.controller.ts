@@ -20,6 +20,8 @@ export class OrdersController {
         @Query('status') status?: string,
         @Query('financialStatus') financialStatus?: string,
         @Query('fulfillmentStatus') fulfillmentStatus?: string,
+        @Query('pipelineState') pipelineState?: string,
+        @Query('shopifyStoreId') shopifyStoreId?: string,
         @Query('search') search?: string,
         @Query('page') page?: string,
         @Query('limit') limit?: string,
@@ -28,6 +30,8 @@ export class OrdersController {
             status,
             financialStatus,
             fulfillmentStatus,
+            pipelineState,
+            shopifyStoreId,
             search,
             page: page ? +page : undefined,
             limit: limit ? +limit : undefined,
@@ -60,5 +64,11 @@ export class OrdersController {
         @CurrentUser() user: any,
     ) {
         return this.svc.updateStatus(id, body, user.sub);
+    }
+
+    @Get(':id/logs')
+    @Roles('admin', 'merchandising', 'sourcing')
+    getOrderLogs(@Param('id') id: string) {
+        return this.svc.getOrderLogs(id);
     }
 }
