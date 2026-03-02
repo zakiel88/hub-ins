@@ -362,9 +362,17 @@ export class OrderPipelineService {
             this.prisma.orderLineItem.count({ where }),
         ]);
 
-        // Summary stats
+        // Summary stats — respect the same fulfilled filter
+        const summaryWhere: any = {};
+        if (!includeFulfilled) {
+            summaryWhere.order = {
+                pipelineState: { notIn: ['FULFILLED', 'CANCELLED'] },
+                fulfillmentStatus: { not: 'fulfilled' },
+            };
+        }
         const stateCounts = await this.prisma.orderLineItem.groupBy({
             by: ['itemState'],
+            where: summaryWhere,
             _count: true,
         });
         const summary: Record<string, number> = {};

@@ -162,7 +162,7 @@ export default function MerchandisePage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                            {['Order', 'Brand', 'Sản phẩm', 'SKU', 'SL', 'Giá', 'Item', 'Order State'].map(h => (
+                            {['Order', 'Brand', 'Sản phẩm', 'SKU', 'SL', 'Giá', 'Trạng Thái', 'Trạng Thái Đơn'].map(h => (
                                 <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
                             ))}
                         </tr>
