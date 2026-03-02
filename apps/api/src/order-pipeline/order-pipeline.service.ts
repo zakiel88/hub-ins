@@ -328,7 +328,6 @@ export class OrderPipelineService {
         } else if (!includeFulfilled) {
             where.order = {
                 pipelineState: { notIn: ['FULFILLED', 'CANCELLED'] },
-                fulfillmentStatus: { not: 'fulfilled' },
             };
         }
         if (search) {
@@ -367,7 +366,6 @@ export class OrderPipelineService {
         if (!includeFulfilled) {
             summaryWhere.order = {
                 pipelineState: { notIn: ['FULFILLED', 'CANCELLED'] },
-                fulfillmentStatus: { not: 'fulfilled' },
             };
         }
         const stateCounts = await this.prisma.orderLineItem.groupBy({
