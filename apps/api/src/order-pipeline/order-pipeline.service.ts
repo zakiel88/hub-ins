@@ -311,24 +311,28 @@ export class OrderPipelineService {
         itemState?: string;
         orderState?: string;
         brandId?: string;
+        storeId?: string;
         search?: string;
         includeFulfilled?: boolean;
         page?: number;
         limit?: number;
     }) {
-        const { itemState, orderState, brandId, search, includeFulfilled = false, page = 1, limit = 50 } = filters;
+        const { itemState, orderState, brandId, storeId, search, includeFulfilled = false, page = 1, limit = 50 } = filters;
         const where: any = {};
 
         if (itemState) where.itemState = itemState;
         if (brandId) where.brandId = brandId;
 
-        // If specific orderState is requested, use it; otherwise exclude fulfilled/cancelled
+        // Build order-level filters
+        const orderWhere: any = {};
+        if (storeId) orderWhere.shopifyStoreId = storeId;
         if (orderState) {
-            where.order = { pipelineState: orderState };
+            orderWhere.pipelineState = orderState;
         } else if (!includeFulfilled) {
-            where.order = {
-                pipelineState: { notIn: ['FULFILLED', 'CANCELLED'] },
-            };
+            orderWhere.pipelineState = { notIn: ['FULFILLED', 'CANCELLED'] };
+        }
+        if (Object.keys(orderWhere).length > 0) {
+            where.order = orderWhere;
         }
         if (search) {
             where.OR = [
@@ -361,12 +365,15 @@ export class OrderPipelineService {
             this.prisma.orderLineItem.count({ where }),
         ]);
 
-        // Summary stats — respect the same fulfilled filter
-        const summaryWhere: any = {};
+        // Summary stats — respect the same fulfilled + store filter
+        const summaryOrderWhere: any = {};
+        if (storeId) summaryOrderWhere.shopifyStoreId = storeId;
         if (!includeFulfilled) {
-            summaryWhere.order = {
-                pipelineState: { notIn: ['FULFILLED', 'CANCELLED'] },
-            };
+            summaryOrderWhere.pipelineState = { notIn: ['FULFILLED', 'CANCELLED'] };
+        }
+        const summaryWhere: any = {};
+        if (Object.keys(summaryOrderWhere).length > 0) {
+            summaryWhere.order = summaryOrderWhere;
         }
         const stateCounts = await this.prisma.orderLineItem.groupBy({
             by: ['itemState'],

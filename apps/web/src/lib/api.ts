@@ -393,11 +393,12 @@ class ApiClient {
         });
     }
 
-    async getMerchandise(params?: { itemState?: string; orderState?: string; brandId?: string; search?: string; includeFulfilled?: boolean; page?: number; limit?: number }) {
+    async getMerchandise(params?: { itemState?: string; orderState?: string; brandId?: string; storeId?: string; search?: string; includeFulfilled?: boolean; page?: number; limit?: number }) {
         const qs = new URLSearchParams();
         if (params?.itemState) qs.set('itemState', params.itemState);
         if (params?.orderState) qs.set('orderState', params.orderState);
         if (params?.brandId) qs.set('brandId', params.brandId);
+        if (params?.storeId) qs.set('storeId', params.storeId);
         if (params?.search) qs.set('search', params.search);
         if (params?.includeFulfilled) qs.set('includeFulfilled', 'true');
         if (params?.page) qs.set('page', String(params.page));

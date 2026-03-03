@@ -45,10 +45,12 @@ export default function MerchandisePage() {
     const [summary, setSummary] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [brands, setBrands] = useState<any[]>([]);
+    const [stores, setStores] = useState<any[]>([]);
 
     // Filters
     const [itemState, setItemState] = useState('');
     const [orderState, setOrderState] = useState('');
+    const [storeFilter, setStoreFilter] = useState('');
     const [brandFilter, setBrandFilter] = useState('');
     const [search, setSearch] = useState('');
     const [searchInput, setSearchInput] = useState('');
@@ -64,6 +66,9 @@ export default function MerchandisePage() {
         api.getBrands().then(res => {
             setBrands(res.data || []);
         }).catch(() => { });
+        api.getStores().then((res: any) => {
+            setStores(res.data || []);
+        }).catch(() => { });
     }, []);
 
     const fetchData = useCallback(async () => {
@@ -72,6 +77,7 @@ export default function MerchandisePage() {
             const res = await api.getMerchandise({
                 itemState: itemState || undefined,
                 orderState: orderState || undefined,
+                storeId: storeFilter || undefined,
                 brandId: brandFilter || undefined,
                 search: search || undefined,
                 includeFulfilled,
@@ -87,7 +93,7 @@ export default function MerchandisePage() {
         } finally {
             setLoading(false);
         }
-    }, [itemState, orderState, brandFilter, search, includeFulfilled, page]);
+    }, [itemState, orderState, storeFilter, brandFilter, search, includeFulfilled, page]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -196,6 +202,13 @@ export default function MerchandisePage() {
                         <option value="">Trạng thái đơn</option>
                         {Object.entries(ORDER_STATE_LABELS).map(([k, v]) => (
                             <option key={k} value={k}>{v.label}</option>
+                        ))}
+                    </select>
+
+                    <select value={storeFilter} onChange={e => { setStoreFilter(e.target.value); setPage(1); }} style={selectStyle}>
+                        <option value="">Tất cả Store</option>
+                        {stores.map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.name || s.shopDomain}</option>
                         ))}
                     </select>
 
