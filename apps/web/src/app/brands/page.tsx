@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -96,6 +97,8 @@ export default function BrandsPage() {
     const [banks, setBanks] = useState<{ id: string; brandName: string; fullName: string }[]>([]);
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const { user } = useAuth();
+    const canDelete = user?.role === 'admin' || user?.role === 'sourcing_procurement';
 
     // Load banks once on mount
     useEffect(() => {
@@ -141,6 +144,27 @@ export default function BrandsPage() {
         setFormData({ ...brand });
         setSaveMsg('');
         setModalOpen(true);
+    };
+
+    // ─── Delete ──────────────────────────────────────
+    const handleDelete = async () => {
+        if (!editId) return;
+        const confirmed = window.confirm(`⚠️ Bạn có chắc muốn xóa brand "${formData.name}"?\n\nHành động này không thể hoàn tác.`);
+        if (!confirmed) return;
+        setSaving(true);
+        setSaveMsg('');
+        try {
+            await api.deleteBrand(editId);
+            setSaveMsg('✅ Đã xóa brand');
+            setTimeout(() => {
+                setModalOpen(false);
+                load();
+            }, 600);
+        } catch (err: any) {
+            setSaveMsg(`❌ ${err.message || 'Không thể xóa brand'}`);
+        } finally {
+            setSaving(false);
+        }
     };
 
     // ─── Save ───────────────────────────────────────
@@ -583,6 +607,16 @@ export default function BrandsPage() {
                                 {saveMsg}
                             </div>
                             <div style={{ display: 'flex', gap: 8 }}>
+                                {modalMode === 'edit' && canDelete && (
+                                    <button onClick={handleDelete} disabled={saving}
+                                        style={{
+                                            background: 'transparent', color: '#ef4444', border: '1px solid #ef4444',
+                                            borderRadius: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600,
+                                            cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
+                                        }}>
+                                        🗑️ Xóa Brand
+                                    </button>
+                                )}
                                 <button className="btn-ghost" onClick={() => setModalOpen(false)}>Hủy</button>
                                 <button onClick={handleSave} disabled={saving}
                                     style={{
