@@ -70,6 +70,37 @@ export class BrandsService {
         };
     }
 
+    async getSummary() {
+        const groups = await this.prisma.brand.groupBy({
+            by: ['status'],
+            where: { deletedAt: null },
+            _count: { _all: true },
+        });
+
+        const counts: Record<string, number> = {};
+        let total = 0;
+        for (const g of groups) {
+            counts[g.status] = g._count._all;
+            total += g._count._all;
+        }
+
+        return {
+            total,
+            active: counts['active'] || 0,
+            processing: counts['processing'] || 0,
+            pending: counts['pending'] || 0,
+            inactive: counts['inactive'] || 0,
+        };
+    }
+
+    async getBanks() {
+        return this.prisma.bank.findMany({
+            where: { isActive: true },
+            select: { id: true, fullName: true, brandName: true, swiftCode: true },
+            orderBy: { brandName: 'asc' },
+        });
+    }
+
     async findById(id: string) {
         const brand = await this.prisma.brand.findUnique({
             where: { id },
@@ -151,6 +182,42 @@ export class BrandsService {
             logoUrl?: string;
             notes?: string;
             ownerUserId?: string;
+            companyName?: string;
+            taxCode?: string;
+            companyAddress?: string;
+            warehouseAddress?: string;
+            logoHdUrl?: string;
+            baseIn?: string;
+            returnRate?: string;
+            contractUrl?: string;
+            brandDocsUrl?: string;
+            bankAccount?: string;
+            bankAccountHolder?: string;
+            bankName?: string;
+            paymentTerms?: string;
+            bankAccountOld?: string;
+            saleRate?: string;
+            priceListType?: string;
+            discountFormula?: string;
+            revenueTier1?: string;
+            discountTier1?: string;
+            revenueTier2?: string;
+            discountTier2?: string;
+            revenueTier3?: string;
+            discountTier3?: string;
+            revenueTier1From?: number;
+            revenueTier1To?: number;
+            revenueTier2From?: number;
+            revenueTier2To?: number;
+            revenueTier3From?: number;
+            revenueTier3To?: number;
+            domesticShipping?: string;
+            debtNotes?: string;
+            paymentSchedule1?: string;
+            paymentSchedule2?: string;
+            reconciliationMethod?: string;
+            latePaymentPenalty?: string;
+            latePaymentNotice?: string;
         },
         userId: string,
     ) {
@@ -176,7 +243,7 @@ export class BrandsService {
     }
 
     async updateStatus(id: string, status: string, userId: string) {
-        const validStatuses = ['active', 'inactive', 'onboarding', 'suspended'];
+        const validStatuses = ['active', 'inactive', 'processing', 'pending', 'onboarding', 'suspended'];
         if (!validStatuses.includes(status)) {
             throw new BadRequestException(
                 `Invalid status '${status}'. Must be one of: ${validStatuses.join(', ')}`,

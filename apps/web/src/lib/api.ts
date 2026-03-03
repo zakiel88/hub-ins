@@ -78,6 +78,27 @@ class ApiClient {
         return this.request<{ data: any[]; meta: any }>(`/api/v1/brands${qs}`);
     }
 
+    async getBrandsSummary() {
+        return this.request<{ total: number; active: number; processing: number; pending: number; inactive: number }>(`/api/v1/brands/summary`);
+    }
+
+    async getBanks() {
+        return this.request<{ id: string; fullName: string; brandName: string; swiftCode: string | null }[]>(`/api/v1/brands/banks`);
+    }
+
+    async uploadFile(file: File) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const token = this.getToken();
+        const res = await fetch(`${API_BASE}/api/v1/uploads`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+        });
+        if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+        return res.json() as Promise<{ url: string; filename: string; size: number; mimetype: string }>;
+    }
+
     async getBrand(id: string) {
         return this.request<{ data: any }>(`/api/v1/brands/${id}`);
     }

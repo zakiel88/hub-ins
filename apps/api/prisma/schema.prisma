@@ -127,6 +127,58 @@ model Brand {
   status      String    @default("active") @db.VarChar(20)
   website     String?
   notes       String?
+
+  // Company info
+  companyName       String?   @map("company_name") @db.VarChar(255)
+  taxCode           String?   @map("tax_code") @db.VarChar(30)
+  companyAddress    String?   @map("company_address")
+
+  // ── Brand Info fields (synced from Lark) ──
+  warehouseAddress    String?   @map("warehouse_address")
+  logoHdUrl           String?   @map("logo_hd_url")
+  baseIn              String?   @map("base_in") @db.VarChar(10)
+  returnRate          String?   @map("return_rate") @db.VarChar(10)
+  contractUrl         String?   @map("contract_url")
+  brandDocsUrl        String?   @map("brand_docs_url")
+
+  // Payment Info
+  bankAccount         String?   @map("bank_account") @db.VarChar(50)
+  bankAccountHolder   String?   @map("bank_account_holder")
+  bankName            String?   @map("bank_name") @db.VarChar(100)
+  paymentTerms        String?   @map("payment_terms") @db.VarChar(50)
+  bankAccountOld      String?   @map("bank_account_old") @db.VarChar(50)
+  saleRate            String?   @map("sale_rate") @db.VarChar(50)
+
+  // Pricing & Discount Tiers
+  priceListType       String?   @map("price_list_type") @db.VarChar(20)
+  discountFormula     String?   @map("discount_formula") @db.VarChar(50)
+  revenueTier1        String?   @map("revenue_tier_1") @db.VarChar(30)
+  discountTier1       String?   @map("discount_tier_1") @db.VarChar(20)
+  revenueTier2        String?   @map("revenue_tier_2") @db.VarChar(30)
+  discountTier2       String?   @map("discount_tier_2") @db.VarChar(20)
+  revenueTier3        String?   @map("revenue_tier_3") @db.VarChar(30)
+  discountTier3       String?   @map("discount_tier_3") @db.VarChar(20)
+
+  // Revenue tier numeric ranges (for calculations)
+  revenueTier1From    Float?    @map("revenue_tier_1_from")
+  revenueTier1To      Float?    @map("revenue_tier_1_to")
+  revenueTier2From    Float?    @map("revenue_tier_2_from")
+  revenueTier2To      Float?    @map("revenue_tier_2_to")
+  revenueTier3From    Float?    @map("revenue_tier_3_from")
+  revenueTier3To      Float?    @map("revenue_tier_3_to")
+
+  // Reconciliation & Debt
+  domesticShipping    String?   @map("domestic_shipping") @db.VarChar(50)
+  debtNotes           String?   @map("debt_notes")
+  paymentSchedule1    String?   @map("payment_schedule_1")
+  paymentSchedule2    String?   @map("payment_schedule_2")
+  reconciliationMethod String?  @map("reconciliation_method")
+  latePaymentPenalty  String?   @map("late_payment_penalty")
+  latePaymentNotice   String?   @map("late_payment_notice")
+
+  // Lark sync metadata
+  larkRecordId        String?   @unique @map("lark_record_id") @db.VarChar(100)
+
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz()
@@ -147,6 +199,17 @@ model Brand {
   @@index([status], name: "idx_brands_status")
   @@index([ownerUserId], name: "idx_brands_owner")
   @@map("brands")
+}
+
+model Bank {
+  id          String   @id @default(uuid()) @db.Uuid
+  fullName    String   @map("full_name") @db.VarChar(255)
+  brandName   String   @unique @map("brand_name") @db.VarChar(100)
+  swiftCode   String?  @map("swift_code") @db.VarChar(20)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("banks")
 }
 
 // ═══════════════════════════════════════

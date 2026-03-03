@@ -18,6 +18,7 @@ import { MailModule } from './mail/mail.module';
 import { OrderPipelineModule } from './order-pipeline/order-pipeline.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ProcurementModule } from './procurement/procurement.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { JwtAuthGuard } from './auth/guards';
 import { RolesGuard } from './auth/guards';
 import { getConfig } from './config/configuration';
@@ -71,6 +72,7 @@ import { getConfig } from './config/configuration';
         OrderPipelineModule,
         TasksModule,
         ProcurementModule,
+        UploadsModule,
     ],
     providers: [
         // Global JWT guard — all routes require auth unless @Public()

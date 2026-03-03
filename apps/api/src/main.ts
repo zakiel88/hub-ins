@@ -40,6 +40,11 @@ async function bootstrap() {
     const expressApp = app.getHttpAdapter().getInstance();
     expressApp.set('trust proxy', 1);
 
+    // Serve uploaded files statically
+    const express = require('express');
+    const { join } = require('path');
+    expressApp.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+
     // Railway sets PORT automatically — must use it, fallback to API_PORT for local dev
     const port = process.env.PORT || config.API_PORT;
     await app.listen(port, '0.0.0.0');

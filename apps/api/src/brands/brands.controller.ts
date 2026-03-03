@@ -36,6 +36,18 @@ export class BrandsController {
         return result;
     }
 
+    @Get('summary')
+    @Roles('admin', 'merchandising', 'sourcing_procurement')
+    async getSummary() {
+        return this.brandsService.getSummary();
+    }
+
+    @Get('banks')
+    @Roles('admin', 'merchandising', 'sourcing_procurement')
+    async getBanks() {
+        return this.brandsService.getBanks();
+    }
+
     @Get(':id')
     @Roles('admin', 'merchandising', 'sourcing_procurement')
     async findById(@Param('id', ParseUUIDPipe) id: string) {
@@ -71,6 +83,43 @@ export class BrandsController {
             logoUrl?: string;
             notes?: string;
             ownerUserId?: string;
+            companyName?: string;
+            taxCode?: string;
+            companyAddress?: string;
+            // Brand Info fields
+            warehouseAddress?: string;
+            logoHdUrl?: string;
+            baseIn?: string;
+            returnRate?: string;
+            contractUrl?: string;
+            brandDocsUrl?: string;
+            bankAccount?: string;
+            bankAccountHolder?: string;
+            bankName?: string;
+            paymentTerms?: string;
+            bankAccountOld?: string;
+            saleRate?: string;
+            priceListType?: string;
+            discountFormula?: string;
+            revenueTier1?: string;
+            discountTier1?: string;
+            revenueTier2?: string;
+            discountTier2?: string;
+            revenueTier3?: string;
+            discountTier3?: string;
+            revenueTier1From?: number;
+            revenueTier1To?: number;
+            revenueTier2From?: number;
+            revenueTier2To?: number;
+            revenueTier3From?: number;
+            revenueTier3To?: number;
+            domesticShipping?: string;
+            debtNotes?: string;
+            paymentSchedule1?: string;
+            paymentSchedule2?: string;
+            reconciliationMethod?: string;
+            latePaymentPenalty?: string;
+            latePaymentNotice?: string;
         },
         @CurrentUser() user: JwtPayload,
     ) {
