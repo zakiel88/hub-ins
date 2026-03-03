@@ -7,7 +7,7 @@ async function bootstrap() {
     // Fail-fast: validate env before anything else
     const config = validateConfig();
 
-    const app = await NestFactory.create(AppModule, { bufferLogs: true });
+    const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
     // Use pino as the NestJS logger
     app.useLogger(app.get(Logger));
