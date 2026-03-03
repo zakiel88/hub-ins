@@ -38,6 +38,75 @@ export class ShopifyStoresService {
         return decrypted;
     }
 
+    /**
+     * Get a valid access token for a store — auto-refreshes if expired (401).
+     * Uses stored client credentials to exchange for a new token via client_credentials grant.
+     */
+    async getValidToken(storeId: string): Promise<{ token: string; refreshed: boolean }> {
+        const store = await this.prisma.shopifyStore.findUnique({ where: { id: storeId } });
+        if (!store) throw new NotFoundException('Store not found');
+
+        let token = this.decrypt(store.accessTokenEnc, store.tokenIv);
+
+        // Quick validation: test token against Shopify
+        const testRes = await fetch(
+            `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/shop.json`,
+            { headers: { 'X-Shopify-Access-Token': token } },
+        );
+
+        if (testRes.ok) {
+            return { token, refreshed: false };
+        }
+
+        // If 401 — attempt auto-refresh using stored client credentials
+        if (testRes.status === 401 && store.clientIdEnc && store.clientIdIv && store.clientSecretEnc && store.clientSecretIv) {
+            this.logger.warn(`Token expired for ${store.storeName} — auto-refreshing...`);
+
+            const clientId = this.decrypt(store.clientIdEnc, store.clientIdIv);
+            const clientSecret = this.decrypt(store.clientSecretEnc, store.clientSecretIv);
+
+            const tokenRes = await fetch(
+                `https://${store.shopifyDomain}/admin/oauth/access_token`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_id: clientId,
+                        client_secret: clientSecret,
+                        grant_type: 'client_credentials',
+                    }),
+                },
+            );
+
+            if (!tokenRes.ok) {
+                const body = await tokenRes.text();
+                this.logger.error(`Token refresh failed for ${store.storeName}: ${body}`);
+                throw new Error(`Token refresh failed (${tokenRes.status}): ${body}`);
+            }
+
+            const tokenData: any = await tokenRes.json();
+            const newToken = tokenData.access_token;
+            if (!newToken) throw new Error('No access token returned from Shopify refresh');
+
+            // Encrypt and save new token
+            const enc = this.encrypt(newToken);
+            await this.prisma.shopifyStore.update({
+                where: { id: storeId },
+                data: {
+                    accessTokenEnc: enc.encrypted,
+                    tokenIv: enc.iv,
+                    tokenLastRotatedAt: new Date(),
+                },
+            });
+
+            this.logger.log(`Token refreshed for ${store.storeName}`);
+            return { token: newToken, refreshed: true };
+        }
+
+        // Other errors (non-401)
+        throw new Error(`Shopify API error: ${testRes.status} ${testRes.statusText}`);
+    }
+
     /* ── Connect Store (Client Credentials Grant) ── */
 
     /**
@@ -345,35 +414,26 @@ export class ShopifyStoresService {
     /* ── Connection Test ── */
 
     async testConnection(id: string) {
-        const store = await this.prisma.shopifyStore.findUnique({ where: { id } });
-        if (!store) throw new NotFoundException('Store not found');
-
-        const token = this.decrypt(store.accessTokenEnc, store.tokenIv);
-        const url = `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/shop.json`;
-
         try {
-            const res = await fetch(url, {
-                headers: {
-                    'X-Shopify-Access-Token': token,
-                    'Content-Type': 'application/json',
-                },
-            });
+            const { token, refreshed } = await this.getValidToken(id);
+            const store = await this.prisma.shopifyStore.findUnique({ where: { id } });
+            if (!store) throw new NotFoundException('Store not found');
+
+            const res = await fetch(
+                `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/shop.json`,
+                { headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' } },
+            );
 
             if (!res.ok) {
                 const body = await res.text();
-                return {
-                    data: {
-                        success: false,
-                        status: res.status,
-                        error: body.substring(0, 500),
-                    },
-                };
+                return { data: { success: false, status: res.status, error: body.substring(0, 500) } };
             }
 
             const shop: any = await res.json();
             return {
                 data: {
                     success: true,
+                    tokenRefreshed: refreshed,
                     shop: {
                         name: shop.shop?.name,
                         email: shop.shop?.email,
@@ -386,12 +446,7 @@ export class ShopifyStoresService {
                 },
             };
         } catch (err: any) {
-            return {
-                data: {
-                    success: false,
-                    error: err.message || 'Connection failed',
-                },
-            };
+            return { data: { success: false, error: err.message || 'Connection failed' } };
         }
     }
 

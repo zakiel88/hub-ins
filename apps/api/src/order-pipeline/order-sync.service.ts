@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ShopifyStoresService } from '../shopify-stores/shopify-stores.service';
 import { applyPipelineMapping } from '../config/pipeline-mapping';
 import * as crypto from 'crypto';
 import { getConfig } from '../config/configuration';
@@ -12,6 +13,7 @@ export class OrderSyncService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly audit: AuditService,
+        private readonly shopifyStores: ShopifyStoresService,
     ) { }
 
     private decrypt(encrypted: string, ivHex: string): string {
@@ -29,7 +31,11 @@ export class OrderSyncService {
         if (!store) throw new NotFoundException('Store not found');
         if (!store.isActive) throw new NotFoundException('Store is inactive');
 
-        const token = this.decrypt(store.accessTokenEnc, store.tokenIv);
+        // Use auto-refresh token — if expired, will re-exchange client credentials
+        const { token, refreshed } = await this.shopifyStores.getValidToken(storeId);
+        if (refreshed) {
+            this.logger.log(`Token was auto-refreshed for ${store.storeName} before sync`);
+        }
 
         // Build initial URL with date filter if provided
         let url = `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/orders.json?limit=${Math.min(limit, 250)}&status=any`;
