@@ -334,12 +334,34 @@ model Order {
   trackingCompany    String?   @map("tracking_company") @db.VarChar(100)
   trackingUrl        String?   @map("tracking_url")
   shopifyRawPayload  Json?     @map("shopify_raw_payload")
+  // — Financial details (from Lark) —
+  totalPrice             Decimal   @map("total_price") @db.Decimal(10, 2)
+  totalLineItemsPrice    Decimal?  @map("total_line_items_price") @db.Decimal(10, 2)
+  totalShippingPrice     Decimal?  @map("total_shipping_price") @db.Decimal(10, 2)
+  totalDiscounts         Decimal?  @map("total_discounts") @db.Decimal(10, 2)
+  totalTip               Decimal?  @map("total_tip") @db.Decimal(10, 2)
+  totalWeight            Decimal?  @map("total_weight") @db.Decimal(10, 2)
+  totalQuantity          Int?      @map("total_quantity")
+  currency               String    @db.VarChar(3)
+  // — Billing address —
+  billingAddress         Json?     @map("billing_address")
+  // — Discount details —
+  discountCodes          String?   @map("discount_codes")
+  discountValue          Decimal?  @map("discount_value") @db.Decimal(10, 2)
+  discountValueType      String?   @map("discount_value_type") @db.VarChar(30)
+  discountTargetType     String?   @map("discount_target_type") @db.VarChar(30)
+  discountDescription    String?   @map("discount_description")
+  discountTitle          String?   @map("discount_title") @db.VarChar(100)
+  // — Shipping method —
+  shippingMethodCode     String?   @map("shipping_method_code") @db.VarChar(50)
+  shippingMethodSource   String?   @map("shipping_method_source") @db.VarChar(100)
+  // — Payment & shipment —
+  paymentGateway         String?   @map("payment_gateway") @db.VarChar(100)
+  shipmentStatus         String?   @map("shipment_status") @db.VarChar(30)
   // — common —
-  totalPrice         Decimal   @map("total_price") @db.Decimal(10, 2)
-  currency           String    @db.VarChar(3)
-  orderDate          DateTime  @map("order_date") @db.Timestamptz()
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  orderDate              DateTime  @map("order_date") @db.Timestamptz()
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   shopifyStore ShopifyStore    @relation(fields: [shopifyStoreId], references: [id])
   lineItems    OrderLineItem[]

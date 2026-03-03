@@ -123,6 +123,95 @@ export class OrderSyncService {
         };
     }
 
+    /** Extract financial, billing, discount, shipping method, payment fields from Shopify order */
+    private extractLarkFields(so: any): Record<string, any> {
+        // --- Financial breakdown ---
+        const totalLineItemsPrice = so.total_line_items_price
+            ? parseFloat(so.total_line_items_price)
+            : null;
+        const totalShippingPrice = so.total_shipping_price_set?.shop_money?.amount
+            ? parseFloat(so.total_shipping_price_set.shop_money.amount)
+            : null;
+        const totalDiscounts = so.current_total_discounts
+            ? parseFloat(so.current_total_discounts)
+            : (so.total_discounts ? parseFloat(so.total_discounts) : null);
+        const totalTip = so.total_tip_received
+            ? parseFloat(so.total_tip_received)
+            : null;
+        const totalWeight = so.total_weight != null
+            ? parseFloat(so.total_weight)
+            : null;
+
+        // Total quantity = sum of line item quantities
+        const totalQuantity = (so.line_items || []).reduce(
+            (sum: number, li: any) => sum + (li.quantity || 0), 0,
+        ) || null;
+
+        // --- Billing address (JSON) ---
+        const billingAddress = so.billing_address
+            ? {
+                firstName: so.billing_address.first_name,
+                lastName: so.billing_address.last_name,
+                address1: so.billing_address.address1,
+                address2: so.billing_address.address2,
+                city: so.billing_address.city,
+                province: so.billing_address.province,
+                provinceCode: so.billing_address.province_code,
+                country: so.billing_address.country,
+                countryCode: so.billing_address.country_code,
+                zip: so.billing_address.zip,
+            }
+            : undefined;
+
+        // --- Discount details ---
+        const discountApps = so.discount_applications || [];
+        const discountCodesArr = so.discount_codes || [];
+        const discountCodes = discountCodesArr.length
+            ? discountCodesArr.map((dc: any) => dc.code).join(', ')
+            : null;
+        const firstDiscount = discountApps[0] || discountCodesArr[0];
+        const discountValue = firstDiscount?.value
+            ? parseFloat(firstDiscount.value)
+            : null;
+        const discountValueType = firstDiscount?.value_type || firstDiscount?.type || null;
+        const discountTargetType = firstDiscount?.target_type || null;
+        const discountDescription = firstDiscount?.description || null;
+        const discountTitle = firstDiscount?.title || firstDiscount?.code || null;
+
+        // --- Shipping method ---
+        const shippingLine = (so.shipping_lines || [])[0];
+        const shippingMethodCode = shippingLine?.code || null;
+        const shippingMethodSource = shippingLine?.source || null;
+
+        // --- Payment ---
+        const paymentGateway = (so.payment_gateway_names || [])[0] || null;
+
+        // --- Shipment status ---
+        const fulfillments = so.fulfillments || [];
+        const latestFulfillment = fulfillments[fulfillments.length - 1];
+        const shipmentStatus = latestFulfillment?.shipment_status || null;
+
+        return {
+            totalLineItemsPrice,
+            totalShippingPrice,
+            totalDiscounts,
+            totalTip,
+            totalWeight,
+            totalQuantity,
+            ...(billingAddress ? { billingAddress } : {}),
+            discountCodes,
+            discountValue,
+            discountValueType,
+            discountTargetType,
+            discountDescription,
+            discountTitle,
+            shippingMethodCode,
+            shippingMethodSource,
+            paymentGateway,
+            shipmentStatus,
+        };
+    }
+
     /** Upsert a single Shopify order into DB */
     private async upsertOrder(storeId: string, so: any): Promise<'created' | 'updated'> {
         const customerName = so.customer
@@ -156,7 +245,9 @@ export class OrderSyncService {
 
         if (existing) {
             const tracking = this.extractTracking(so);
+            const larkFields = this.extractLarkFields(so);
             const updateData: any = {
+                ...larkFields,
                 status: so.fulfillment_status === 'fulfilled' ? 'closed' : 'open',
                 financialStatus: so.financial_status,
                 fulfillmentStatus: so.fulfillment_status,
@@ -226,6 +317,7 @@ export class OrderSyncService {
                 totalPrice: parseFloat(so.total_price),
                 currency: so.currency,
                 orderDate: new Date(so.created_at),
+                ...this.extractLarkFields(so),
             },
         });
 
