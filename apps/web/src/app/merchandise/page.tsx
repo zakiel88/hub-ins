@@ -198,13 +198,6 @@ export default function MerchandisePage() {
 
                 {/* Filters Bar */}
                 <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <select value={orderState} onChange={e => { setOrderState(e.target.value); setPage(1); }} style={selectStyle}>
-                        <option value="">Trạng thái đơn</option>
-                        {Object.entries(ORDER_STATE_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v.label}</option>
-                        ))}
-                    </select>
-
                     <select value={storeFilter} onChange={e => { setStoreFilter(e.target.value); setPage(1); }} style={selectStyle}>
                         <option value="">Tất cả Store</option>
                         {stores.map((s: any) => (
@@ -212,17 +205,24 @@ export default function MerchandisePage() {
                         ))}
                     </select>
 
-                    <select value={itemState} onChange={e => { setItemState(e.target.value); setPage(1); }} style={selectStyle}>
-                        <option value="">Trạng thái SP</option>
-                        {Object.entries(ITEM_STATE_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v.label}</option>
-                        ))}
-                    </select>
-
                     <select value={brandFilter} onChange={e => { setBrandFilter(e.target.value); setPage(1); }} style={selectStyle}>
                         <option value="">Tất cả Brand</option>
                         {brands.map((b: any) => (
                             <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                    </select>
+
+                    <select value={orderState} onChange={e => { setOrderState(e.target.value); setPage(1); }} style={selectStyle}>
+                        <option value="">Trạng thái đơn</option>
+                        {Object.entries(ORDER_STATE_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>{v.label}</option>
+                        ))}
+                    </select>
+
+                    <select value={itemState} onChange={e => { setItemState(e.target.value); setPage(1); }} style={selectStyle}>
+                        <option value="">Trạng thái SP</option>
+                        {Object.entries(ITEM_STATE_LABELS).map(([k, v]) => (
+                            <option key={k} value={k}>{v.label}</option>
                         ))}
                     </select>
 
