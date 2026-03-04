@@ -46,15 +46,30 @@ export class WebhookController {
                 return;
             }
 
-            // 2. Verify HMAC signature
-            if (store.webhookSecret && req.rawBody) {
-                const computed = crypto
-                    .createHmac('sha256', store.webhookSecret)
-                    .update(req.rawBody)
-                    .digest('base64');
-                if (computed !== hmac) {
-                    this.logger.error(`HMAC mismatch for ${shopDomain}`);
-                    return;
+            // 2. Verify HMAC signature using Shopify's client secret
+            if (req.rawBody && hmac) {
+                // Shopify signs webhooks with the app's client secret
+                let secret: string | null = null;
+                if (store.clientSecretEnc && store.clientSecretIv) {
+                    try {
+                        const key = Buffer.from(process.env.ENCRYPTION_KEY || '', 'hex');
+                        const iv = Buffer.from(store.clientSecretIv, 'hex');
+                        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+                        secret = decipher.update(store.clientSecretEnc, 'hex', 'utf8') + decipher.final('utf8');
+                    } catch {
+                        this.logger.warn(`Could not decrypt client secret for ${shopDomain}, skipping HMAC`);
+                    }
+                }
+                if (secret) {
+                    const computed = crypto
+                        .createHmac('sha256', secret)
+                        .update(req.rawBody)
+                        .digest('base64');
+                    if (computed !== hmac) {
+                        this.logger.error(`HMAC mismatch for ${shopDomain} — rejecting webhook`);
+                        return;
+                    }
+                    this.logger.log(`HMAC verified for ${shopDomain}`);
                 }
             }
 
