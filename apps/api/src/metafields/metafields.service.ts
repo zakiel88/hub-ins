@@ -1026,4 +1026,38 @@ export class MetafieldsService {
             });
         } catch { /* ignore log failures */ }
     }
+
+    // ─── TEMP: Debug helpers (REMOVE after debugging) ───
+    async debugGetStores() {
+        const stores = await this.prisma.shopifyStore.findMany({
+            where: { isActive: true },
+            select: { id: true, storeName: true, shopifyDomain: true, apiVersion: true, scopes: true },
+        });
+        const results = [];
+        for (const s of stores) {
+            let tokenStatus = 'unknown';
+            try {
+                const { token, refreshed } = await this.shopifyStores.getValidToken(s.id);
+                tokenStatus = `valid (refreshed: ${refreshed})`;
+            } catch (err: any) {
+                tokenStatus = `ERROR: ${err.message}`;
+            }
+            results.push({ ...s, tokenStatus });
+        }
+        return results;
+    }
+
+    async debugGetDefinitionCount() {
+        return this.prisma.metafieldDefinition.count();
+    }
+
+    async debugGetLatestSyncJob() {
+        return this.prisma.syncJob.findFirst({
+            where: { jobType: { startsWith: 'sync' } },
+            orderBy: { createdAt: 'desc' },
+            include: {
+                logs: { orderBy: { createdAt: 'asc' }, take: 50 },
+            },
+        });
+    }
 }

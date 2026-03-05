@@ -24,6 +24,15 @@ export class MetafieldsController {
         private readonly catalogValidation: CatalogValidationService,
     ) { }
 
+    // ─── TEMP: Diagnostic endpoint (REMOVE after debugging) ───
+    @Get('debug-sync')
+    async debugSync() {
+        const stores = await this.metafieldsService.debugGetStores();
+        const defCount = await this.metafieldsService.debugGetDefinitionCount();
+        const latestJob = await this.metafieldsService.debugGetLatestSyncJob();
+        return { stores, defCount, latestJob };
+    }
+
     // ─── Definitions ─────────────────────
 
     @Get('definitions')
