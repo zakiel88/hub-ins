@@ -76,7 +76,7 @@ export class MetafieldsController {
         const job = await this.metafieldsService.createSyncJob('sync_definitions', storeId);
 
         // Fire and forget — run in background
-        this.metafieldsService.syncDefinitionsFromShopify(storeId)
+        this.metafieldsService.syncDefinitionsFromShopify(storeId, job.id)
             .then(async (result) => {
                 await this.metafieldsService.completeSyncJob(job.id, 'success', result);
             })

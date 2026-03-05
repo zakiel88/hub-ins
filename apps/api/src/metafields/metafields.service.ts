@@ -616,12 +616,14 @@ export class MetafieldsService {
     // Sync Definitions from Shopify
     // ═══════════════════════════════════════
 
-    async syncDefinitionsFromShopify(storeId?: string) {
+    async syncDefinitionsFromShopify(storeId?: string, jobId?: string) {
         const storeFilter: any = { isActive: true };
         if (storeId) storeFilter.id = storeId;
 
         const stores = await this.prisma.shopifyStore.findMany({ where: storeFilter });
         if (stores.length === 0) throw new NotFoundException('No active stores found');
+
+        await this.addSyncLog(jobId, 'info', `Starting sync for ${stores.length} store(s)`);
 
         let totalCreated = 0;
         let totalUpdated = 0;
@@ -630,9 +632,11 @@ export class MetafieldsService {
 
         for (const store of stores) {
             const storeResult = { storeName: store.storeName, created: 0, updated: 0, discovered: 0, errors: [] as string[] };
+            await this.addSyncLog(jobId, 'info', `🏪 Processing store: ${store.storeName} (${store.shopifyDomain})`);
 
             try {
                 const { token } = await this.shopifyStores.getValidToken(store.id);
+                await this.addSyncLog(jobId, 'info', `✓ Token obtained for ${store.storeName}`);
 
                 // ── Phase 1: Fetch formal definitions from Shopify ──
                 for (const { resource, ownerType } of [
@@ -643,7 +647,7 @@ export class MetafieldsService {
                         const defs = await this.fetchShopifyMetafieldDefinitions(
                             store.shopifyDomain, token, store.apiVersion, resource,
                         );
-                        this.logger.log(`Phase 1: Fetched ${defs.length} ${resource} metafield definitions from ${store.storeName}`);
+                        await this.addSyncLog(jobId, 'info', `Phase 1: ${defs.length} ${resource} definitions from ${store.storeName}`);
 
                         for (const def of defs) {
                             const result = await this.upsertDefinition(def.namespace, def.key, ownerType, {
@@ -656,7 +660,7 @@ export class MetafieldsService {
                             else { totalSkipped++; }
                         }
                     } catch (err: any) {
-                        this.logger.warn(`Phase 1 ${resource} error for ${store.storeName}: ${err.message}`);
+                        await this.addSyncLog(jobId, 'error', `Phase 1 ${resource} error for ${store.storeName}: ${err.message}`);
                         storeResult.errors.push(`definitions/${resource}: ${err.message}`);
                     }
                 }
@@ -664,24 +668,29 @@ export class MetafieldsService {
                 // ── Phase 2: Discover definitions from actual product metafield values ──
                 try {
                     const discovered = await this.discoverFromProductMetafields(
-                        store.shopifyDomain, token, store.apiVersion, store.storeName,
+                        store.shopifyDomain, token, store.apiVersion, store.storeName, jobId,
                     );
                     storeResult.discovered = discovered.total;
                     totalCreated += discovered.created;
                     totalUpdated += discovered.updated;
                     storeResult.created += discovered.created;
                     storeResult.updated += discovered.updated;
+                    await this.addSyncLog(jobId, 'info', `Phase 2 done for ${store.storeName}: ${discovered.total} unique keys, ${discovered.created} created`);
                 } catch (err: any) {
-                    this.logger.warn(`Phase 2 error for ${store.storeName}: ${err.message}`);
+                    await this.addSyncLog(jobId, 'error', `Phase 2 error for ${store.storeName}: ${err.message}`);
                     storeResult.errors.push(`product-scan: ${err.message}`);
                 }
 
             } catch (err: any) {
+                await this.addSyncLog(jobId, 'error', `Auth error for ${store.storeName}: ${err.message}`);
                 storeResult.errors.push(`Auth: ${err.message}`);
             }
 
+            await this.addSyncLog(jobId, 'info', `📊 ${store.storeName} result: ${storeResult.created} created, ${storeResult.updated} updated, errors: ${storeResult.errors.length}`);
             perStore.push(storeResult);
         }
+
+        await this.addSyncLog(jobId, 'info', `✅ TOTAL: ${totalCreated} created, ${totalUpdated} updated, ${totalSkipped} skipped`);
 
         return {
             created: totalCreated,
@@ -834,14 +843,14 @@ export class MetafieldsService {
      * that exist on products but weren't formally registered as definitions.
      */
     private async discoverFromProductMetafields(
-        domain: string, token: string, apiVersion: string, storeName: string,
+        domain: string, token: string, apiVersion: string, storeName: string, jobId?: string,
     ) {
         let created = 0;
         let updated = 0;
         const seen = new Set<string>(); // namespace.key.ownerType
 
         // Fetch a sample of products (max 50) to discover metafield patterns
-        const productsUrl = `https://${domain}/admin/api/${apiVersion}/products.json?limit=50&fields=id,title`;
+        const productsUrl = `https://${domain}/admin/api/${apiVersion}/products.json?limit=20&fields=id,title`;
         const productsRes = await fetch(productsUrl, {
             headers: { 'X-Shopify-Access-Token': token },
         });
@@ -849,7 +858,7 @@ export class MetafieldsService {
         const productsData: any = await productsRes.json();
         const products = productsData.products || [];
 
-        this.logger.log(`Phase 2: Scanning metafields from ${products.length} products on ${storeName}`);
+        await this.addSyncLog(jobId, 'info', `Phase 2: Scanning metafields from ${products.length} products on ${storeName}`);
 
         for (const product of products) {
             // Product-level metafields
@@ -989,15 +998,32 @@ export class MetafieldsService {
     }
 
     async completeSyncJob(jobId: string, status: 'success' | 'failed', result?: any, errorMsg?: string) {
+        // Collect per-store errors if available
+        const storeErrors = result?.stores
+            ?.filter((s: any) => s.errors?.length > 0)
+            ?.map((s: any) => `${s.storeName}: ${s.errors.join('; ')}`)
+            ?.join(' | ') || null;
+
         await this.prisma.syncJob.update({
             where: { id: jobId },
             data: {
                 status,
                 completedAt: new Date(),
-                processed: result?.created || 0,
+                processed: (result?.created || 0) + (result?.updated || 0),
                 totalItems: (result?.created || 0) + (result?.updated || 0) + (result?.skipped || 0),
-                errorMsg: errorMsg || null,
+                errorMsg: errorMsg || storeErrors || null,
             },
         });
+    }
+
+    // ─── Job logging helper ───
+    private async addSyncLog(jobId: string | undefined, level: string, message: string, data?: any) {
+        this.logger.log(`[Sync] ${message}`);
+        if (!jobId) return;
+        try {
+            await this.prisma.syncJobLog.create({
+                data: { jobId, level, message, data: data || undefined },
+            });
+        } catch { /* ignore log failures */ }
     }
 }
