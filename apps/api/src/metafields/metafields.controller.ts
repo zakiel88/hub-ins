@@ -13,7 +13,7 @@ import {
 import { MetafieldsService } from './metafields.service';
 import { MetafieldsPushService, PushParams } from './metafields-push.service';
 import { CatalogValidationService } from './catalog-validation.service';
-import { Roles } from '../auth/decorators';
+import { Roles, Public } from '../auth/decorators';
 import { searchTaxonomy, getTaxonomyCategories } from './taxonomy';
 
 @Controller('api/v1/metafields')
@@ -26,6 +26,7 @@ export class MetafieldsController {
 
     // ─── TEMP: Diagnostic endpoint (REMOVE after debugging) ───
     @Get('debug-sync')
+    @Public()
     async debugSync() {
         const stores = await this.metafieldsService.debugGetStores();
         const defCount = await this.metafieldsService.debugGetDefinitionCount();
