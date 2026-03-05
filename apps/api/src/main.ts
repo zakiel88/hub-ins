@@ -58,8 +58,8 @@ async function bootstrap() {
         const { PrismaService } = await import('./prisma/prisma.service');
         const prisma = app.get(PrismaService);
 
-        await prisma.$executeRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS metafield_definitions (
+        const migrations = [
+            `CREATE TABLE IF NOT EXISTS metafield_definitions (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 namespace VARCHAR(100) NOT NULL DEFAULT 'custom',
                 key VARCHAR(100) NOT NULL,
@@ -73,9 +73,8 @@ async function bootstrap() {
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT uq_mfdef_ns_key_owner UNIQUE (namespace, key, owner_type)
-            );
-
-            CREATE TABLE IF NOT EXISTS metafield_definition_options (
+            )`,
+            `CREATE TABLE IF NOT EXISTS metafield_definition_options (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 definition_id UUID NOT NULL REFERENCES metafield_definitions(id) ON DELETE CASCADE,
                 value VARCHAR(500) NOT NULL,
@@ -84,10 +83,9 @@ async function bootstrap() {
                 is_active BOOLEAN NOT NULL DEFAULT true,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT uq_mfopt_def_value UNIQUE (definition_id, value)
-            );
-            CREATE INDEX IF NOT EXISTS idx_mfopt_definition ON metafield_definition_options(definition_id);
-
-            CREATE TABLE IF NOT EXISTS catalog_metafield_schema (
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_mfopt_definition ON metafield_definition_options(definition_id)`,
+            `CREATE TABLE IF NOT EXISTS catalog_metafield_schema (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 shopify_category_id VARCHAR(100) NOT NULL,
                 definition_id UUID NOT NULL REFERENCES metafield_definitions(id) ON DELETE CASCADE,
@@ -95,10 +93,9 @@ async function bootstrap() {
                 display_order INT NOT NULL DEFAULT 0,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT uq_cms_cat_def UNIQUE (shopify_category_id, definition_id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_cms_category ON catalog_metafield_schema(shopify_category_id);
-
-            CREATE TABLE IF NOT EXISTS metafield_values (
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_cms_category ON catalog_metafield_schema(shopify_category_id)`,
+            `CREATE TABLE IF NOT EXISTS metafield_values (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 owner_type VARCHAR(20) NOT NULL,
                 owner_id UUID NOT NULL,
@@ -114,35 +111,42 @@ async function bootstrap() {
                 last_pushed_hash VARCHAR(64),
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            );
-            CREATE INDEX IF NOT EXISTS idx_mfv_owner ON metafield_values(owner_type, owner_id);
-            CREATE INDEX IF NOT EXISTS idx_mfv_definition ON metafield_values(definition_id);
-            CREATE INDEX IF NOT EXISTS idx_mfv_store ON metafield_values(store_id);
-            CREATE INDEX IF NOT EXISTS idx_mfv_status ON metafield_values(status);
-
-            CREATE TABLE IF NOT EXISTS product_validation_states (
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_mfv_owner ON metafield_values(owner_type, owner_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_mfv_definition ON metafield_values(definition_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_mfv_store ON metafield_values(store_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_mfv_status ON metafield_values(status)`,
+            `CREATE TABLE IF NOT EXISTS product_validation_states (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
                 store_id UUID REFERENCES shopify_stores(id),
                 is_valid BOOLEAN NOT NULL DEFAULT false,
-                missing_required JSONB NOT NULL DEFAULT '[]',
+                missing_required JSONB NOT NULL DEFAULT '[]'::jsonb,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT uq_pvs_product_store UNIQUE (product_id, store_id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_pvs_product ON product_validation_states(product_id);
-            CREATE INDEX IF NOT EXISTS idx_pvs_valid ON product_validation_states(is_valid);
-        `);
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_pvs_product ON product_validation_states(product_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_pvs_valid ON product_validation_states(is_valid)`,
+            // ALTER existing tables
+            `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS metafield_value_id UUID`,
+            `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS store_id UUID`,
+            `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS shopify_resource_id VARCHAR(50)`,
+            `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS shopify_metafield_id VARCHAR(50)`,
+            `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS payload JSONB`,
+        ];
 
-        // Add missing columns to existing tables
-        await prisma.$executeRawUnsafe(`
-            ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS metafield_value_id UUID;
-            ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS store_id UUID;
-            ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS shopify_resource_id VARCHAR(50);
-            ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS shopify_metafield_id VARCHAR(50);
-            ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS payload JSONB;
-        `);
-
-        console.log('✅ Sprint 2 tables ensured');
+        let ok = 0;
+        let fail = 0;
+        for (const sql of migrations) {
+            try {
+                await prisma.$executeRawUnsafe(sql);
+                ok++;
+            } catch (err: any) {
+                fail++;
+                console.warn(`⚠️ Migration step failed: ${err.message?.substring(0, 100)}`);
+            }
+        }
+        console.log(`✅ Sprint 2 tables: ${ok} OK, ${fail} failed`);
     } catch (err: any) {
         console.warn('⚠️ Table migration skipped:', err.message);
     }
