@@ -1031,20 +1031,20 @@ export class MetafieldsService {
     async debugGetStores() {
         const stores = await this.prisma.shopifyStore.findMany({
             where: { isActive: true },
-            select: { id: true, storeName: true, shopifyDomain: true, apiVersion: true, scopes: true },
+            select: {
+                id: true, storeName: true, shopifyDomain: true,
+                apiVersion: true, scopes: true,
+                accessTokenEnc: true,
+            },
         });
-        const results = [];
-        for (const s of stores) {
-            let tokenStatus = 'unknown';
-            try {
-                const { token, refreshed } = await this.shopifyStores.getValidToken(s.id);
-                tokenStatus = `valid (refreshed: ${refreshed})`;
-            } catch (err: any) {
-                tokenStatus = `ERROR: ${err.message}`;
-            }
-            results.push({ ...s, tokenStatus });
-        }
-        return results;
+        return stores.map(s => ({
+            id: s.id,
+            storeName: s.storeName,
+            shopifyDomain: s.shopifyDomain,
+            apiVersion: s.apiVersion,
+            scopes: s.scopes,
+            hasToken: !!s.accessTokenEnc,
+        }));
     }
 
     async debugGetDefinitionCount() {
