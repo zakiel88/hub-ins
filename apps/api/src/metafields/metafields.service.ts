@@ -951,28 +951,74 @@ export class MetafieldsService {
     private async fetchShopifyMetafieldDefinitions(
         domain: string, token: string, apiVersion: string, ownerResource: string,
     ): Promise<any[]> {
-        const allDefs: any[] = [];
-        let url: string | null =
-            `https://${domain}/admin/api/${apiVersion}/metafield_definitions.json?owner_resource=${ownerResource}&limit=250`;
+        // Shopify REST metafield_definitions.json was removed in v2025-01
+        // Use GraphQL Admin API instead
+        const ownerTypeMap: Record<string, string> = {
+            product: 'PRODUCT',
+            variant: 'PRODUCTVARIANT',
+        };
+        const ownerType = ownerTypeMap[ownerResource] || ownerResource.toUpperCase();
 
-        while (url) {
+        const allDefs: any[] = [];
+        let cursor: string | null = null;
+        let hasNext = true;
+
+        while (hasNext) {
+            const afterClause = cursor ? `, after: "${cursor}"` : '';
+            const query = `{
+                metafieldDefinitions(ownerType: ${ownerType}, first: 50${afterClause}) {
+                    edges {
+                        cursor
+                        node {
+                            namespace { value }
+                            key
+                            name
+                            description
+                            type { name }
+                            validations { name value }
+                            pinnedPosition
+                        }
+                    }
+                    pageInfo { hasNextPage }
+                }
+            }`;
+
+            const url = `https://${domain}/admin/api/${apiVersion}/graphql.json`;
             const res = await fetch(url, {
-                headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: {
+                    'X-Shopify-Access-Token': token,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query }),
             });
 
             if (!res.ok) {
                 const body = await res.text();
-                throw new Error(`Shopify API ${res.status}: ${body.substring(0, 300)}`);
+                throw new Error(`Shopify GraphQL ${res.status}: ${body.substring(0, 300)}`);
             }
 
-            const data: any = await res.json();
-            allDefs.push(...(data.metafield_definitions || []));
+            const json: any = await res.json();
+            if (json.errors?.length) {
+                throw new Error(`Shopify GraphQL errors: ${JSON.stringify(json.errors).substring(0, 300)}`);
+            }
 
-            const linkHeader = res.headers.get('Link') || '';
-            const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-            url = nextMatch ? nextMatch[1] : null;
+            const edges = json.data?.metafieldDefinitions?.edges || [];
+            for (const edge of edges) {
+                const n = edge.node;
+                allDefs.push({
+                    namespace: n.namespace?.value || 'custom',
+                    key: n.key,
+                    name: n.name,
+                    description: n.description,
+                    type: n.type,
+                    validations: n.validations,
+                });
+                cursor = edge.cursor;
+            }
 
-            if (url) await new Promise(r => setTimeout(r, 500));
+            hasNext = json.data?.metafieldDefinitions?.pageInfo?.hasNextPage === true;
+            if (hasNext) await new Promise(r => setTimeout(r, 500));
         }
 
         return allDefs;
