@@ -44,6 +44,15 @@ async function bootstrap() {
     const expressApp = app.getHttpAdapter().getInstance();
     expressApp.set('trust proxy', 1);
 
+    // ── Startup: clean up zombie jobs (stuck in 'running' from previous deploy) ──
+    try {
+        const { JobsService } = await import('./jobs/jobs.service');
+        const jobsService = app.get(JobsService);
+        await jobsService.cleanupZombieJobs();
+    } catch (err: any) {
+        console.warn('⚠️ Zombie cleanup skipped:', err.message);
+    }
+
     // Serve uploaded files statically
     const express = require('express');
     const { join } = require('path');

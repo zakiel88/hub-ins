@@ -2,6 +2,7 @@ import {
     Controller,
     Get,
     Post,
+    Patch,
     Param,
     Query,
     ParseUUIDPipe,
@@ -48,6 +49,13 @@ export class JobsController {
     @Roles('admin')
     async retry(@Param('id', ParseUUIDPipe) id: string) {
         const job = await this.jobsService.retry(id);
+        return { data: job };
+    }
+
+    @Patch(':id/cancel')
+    @Roles('admin')
+    async cancel(@Param('id', ParseUUIDPipe) id: string) {
+        const job = await this.jobsService.cancelJob(id);
         return { data: job };
     }
 }

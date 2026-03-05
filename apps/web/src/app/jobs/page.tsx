@@ -47,6 +47,18 @@ export default function JobsPage() {
         setShowModal(true);
     };
 
+    const handleCancel = async (jobId: string) => {
+        if (!confirm('Cancel this job?')) return;
+        try {
+            await api.cancelJob(jobId);
+            fetchJobs();
+            loadSummary();
+            setShowModal(false);
+        } catch (err) {
+            alert('Cancel failed');
+        }
+    };
+
     const handleRetry = async (jobId: string) => {
         try {
             await api.retryJob(jobId);
@@ -247,9 +259,18 @@ export default function JobsPage() {
                             </div>
                         )}
 
-                        {/* Retry button */}
-                        {selectedJob.status === 'failed' && (
-                            <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                        {/* Action buttons */}
+                        <div style={{ marginTop: '16px', textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            {(selectedJob.status === 'running' || selectedJob.status === 'pending') && (
+                                <button onClick={() => handleCancel(selectedJob.id)} style={{
+                                    padding: '8px 20px', background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                                    border: 'none', borderRadius: '8px', color: '#fff', fontSize: '13px',
+                                    fontWeight: '600', cursor: 'pointer',
+                                }}>
+                                    ⛔ Cancel Job
+                                </button>
+                            )}
+                            {selectedJob.status === 'failed' && (
                                 <button onClick={() => handleRetry(selectedJob.id)} style={{
                                     padding: '8px 20px', background: 'linear-gradient(135deg, #f59e0b, #d97706)',
                                     border: 'none', borderRadius: '8px', color: '#fff', fontSize: '13px',
@@ -257,8 +278,8 @@ export default function JobsPage() {
                                 }}>
                                     🔄 Retry Job
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

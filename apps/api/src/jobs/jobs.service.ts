@@ -81,4 +81,42 @@ export class JobsService {
         ]);
         return { total, running, success, failed, pending };
     }
+
+    // ─── B: Manual cancel a stuck/running job ────────
+    async cancelJob(id: string) {
+        const job = await this.prisma.syncJob.findUnique({ where: { id } });
+        if (!job) return null;
+        if (job.status !== 'running' && job.status !== 'pending') return job;
+
+        return this.prisma.syncJob.update({
+            where: { id },
+            data: {
+                status: 'failed',
+                errorMsg: 'Manually cancelled by admin',
+                completedAt: new Date(),
+            },
+        });
+    }
+
+    // ─── A: Startup cleanup — mark stale running jobs as failed ───
+    async cleanupZombieJobs() {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+        const result = await this.prisma.syncJob.updateMany({
+            where: {
+                status: 'running',
+                startedAt: { lt: oneHourAgo },
+            },
+            data: {
+                status: 'failed',
+                errorMsg: 'Zombie: server restarted while job was running',
+                completedAt: new Date(),
+            },
+        });
+
+        if (result.count > 0) {
+            this.logger.warn(`🧟 Cleaned up ${result.count} zombie job(s)`);
+        }
+        return result.count;
+    }
 }

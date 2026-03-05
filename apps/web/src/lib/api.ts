@@ -255,6 +255,10 @@ class ApiClient {
         return this.request<{ data: any }>(`/api/v1/jobs/${id}/retry`, { method: 'POST' });
     }
 
+    async cancelJob(id: string) {
+        return this.request<{ data: any }>(`/api/v1/jobs/${id}/cancel`, { method: 'PATCH' });
+    }
+
 
     // Pricing
     async getPricing(params?: Record<string, string>) {
