@@ -1,3 +1,7 @@
+// Force-load .env BEFORE anything else — system env may have production DATABASE_URL
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env'), override: true });
+
 import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';

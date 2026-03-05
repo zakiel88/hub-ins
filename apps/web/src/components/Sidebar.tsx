@@ -16,8 +16,15 @@ const navSections = [
         title: 'Commerce',
         items: [
             { label: 'Brands', href: '/brands', icon: '🏷️' },
-            { label: 'Catalog', href: '/catalog', icon: '📦' },
+            { label: 'Product Management', href: '/catalog', icon: '📦' },
             { label: 'Pricing', href: '/pricing', icon: '💰' },
+        ],
+    },
+    {
+        title: 'Product Data',
+        items: [
+            { label: 'Metafields', href: '/metafields', icon: '🔖' },
+            { label: 'Approval Queue', href: '/approval-queue', icon: '✅' },
         ],
     },
     {
@@ -28,6 +35,7 @@ const navSections = [
             { label: 'Merchandise', href: '/merchandise', icon: '👕' },
             { label: 'Inventory', href: '/inventory', icon: '📦' },
             { label: 'Procurement', href: '/procurement', icon: '📝' },
+            { label: 'Sync Jobs', href: '/jobs', icon: '⚙️' },
         ],
     },
     {

@@ -19,6 +19,9 @@ import { OrderPipelineModule } from './order-pipeline/order-pipeline.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ProcurementModule } from './procurement/procurement.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { ShopifySyncModule } from './shopify-sync/shopify-sync.module';
+import { JobsModule } from './jobs/jobs.module';
+import { MetafieldsModule } from './metafields/metafields.module';
 import { JwtAuthGuard } from './auth/guards';
 import { RolesGuard } from './auth/guards';
 import { getConfig } from './config/configuration';
@@ -73,6 +76,9 @@ import { getConfig } from './config/configuration';
         TasksModule,
         ProcurementModule,
         UploadsModule,
+        ShopifySyncModule,
+        JobsModule,
+        MetafieldsModule,
     ],
     providers: [
         // Global JWT guard — all routes require auth unless @Public()

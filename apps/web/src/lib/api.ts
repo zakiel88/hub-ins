@@ -189,6 +189,25 @@ class ApiClient {
         });
     }
 
+    async updateProduct(id: string, data: any) {
+        return this.request<{ data: any }>(`/api/v1/products/${id}`, {
+            method: 'PUT', body: JSON.stringify(data),
+        });
+    }
+
+    async deleteProduct(id: string) {
+        return this.request(`/api/v1/products/${id}`, { method: 'DELETE' });
+    }
+
+    async getProductsSummary() {
+        return this.request<any>(`/api/v1/products/summary`);
+    }
+
+    async getProductConflicts(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/products${qs}&hasConflict=true`);
+    }
+
     // Colorways
     async getColorways(params?: Record<string, string>) {
         const qs = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -204,6 +223,38 @@ class ApiClient {
             method: 'POST', body: JSON.stringify(data),
         });
     }
+
+    // Sync
+    async triggerImport(storeId: string) {
+        return this.request<{ data: { jobId: string }; message: string }>(`/api/v1/sync/import/${storeId}`, {
+            method: 'POST',
+        });
+    }
+
+    async triggerMetafields(storeId: string) {
+        return this.request<{ data: { jobId: string }; message: string }>(`/api/v1/sync/metafields/${storeId}`, {
+            method: 'POST',
+        });
+    }
+
+    // Jobs
+    async getJobs(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/jobs${qs}`);
+    }
+
+    async getJob(id: string) {
+        return this.request<{ data: any }>(`/api/v1/jobs/${id}`);
+    }
+
+    async getJobsSummary() {
+        return this.request<any>(`/api/v1/jobs/summary`);
+    }
+
+    async retryJob(id: string) {
+        return this.request<{ data: any }>(`/api/v1/jobs/${id}/retry`, { method: 'POST' });
+    }
+
 
     // Pricing
     async getPricing(params?: Record<string, string>) {
@@ -534,6 +585,208 @@ class ApiClient {
             method: 'PATCH', body: JSON.stringify({ status }),
         });
     }
+
+    // ═══════════════════════════════════════
+    // Sprint 2: Metafields
+    // ═══════════════════════════════════════
+
+    // Definitions
+    async getMetafieldDefinitions(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[] }>(`/api/v1/metafields/definitions${qs}`);
+    }
+
+    async createMetafieldDefinition(data: { namespace?: string; key: string; type: string; ownerType: string; label?: string; description?: string; validationJson?: any }) {
+        return this.request<{ data: any }>('/api/v1/metafields/definitions', {
+            method: 'POST', body: JSON.stringify(data),
+        });
+    }
+
+    async updateMetafieldDefinition(id: string, data: { label?: string; description?: string; validationJson?: any; isActive?: boolean; isRequired?: boolean }) {
+        return this.request<{ data: any }>(`/api/v1/metafields/definitions/${id}`, {
+            method: 'PATCH', body: JSON.stringify(data),
+        });
+    }
+
+    // Options Library
+    async getDefinitionsWithOptions(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[] }>(`/api/v1/metafields/definitions-with-options${qs}`);
+    }
+
+    async addMetafieldOption(definitionId: string, value: string, label?: string) {
+        return this.request<{ data: any }>(`/api/v1/metafields/definitions/${definitionId}/options`, {
+            method: 'POST', body: JSON.stringify({ value, label }),
+        });
+    }
+
+    async removeMetafieldOption(optionId: string) {
+        return this.request<any>(`/api/v1/metafields/options/${optionId}`, { method: 'DELETE' });
+    }
+
+    async bulkAddMetafieldOptions(definitionId: string, values: string[]) {
+        return this.request<{ data: any }>(`/api/v1/metafields/definitions/${definitionId}/options/bulk`, {
+            method: 'POST', body: JSON.stringify({ values }),
+        });
+    }
+
+    async autoPopulateMetafieldOptions(definitionId: string) {
+        return this.request<{ data: any }>(`/api/v1/metafields/definitions/${definitionId}/options/auto-populate`, {
+            method: 'POST',
+        });
+    }
+
+    // Catalog Schema
+    async getCatalogSchema(categoryId: string) {
+        return this.request<{ data: any[] }>(`/api/v1/metafields/schemas?categoryId=${categoryId}`);
+    }
+
+    async addCatalogSchema(data: { shopifyCategoryId: string; definitionId: string; isRequired?: boolean; displayOrder?: number }) {
+        return this.request<{ data: any }>('/api/v1/metafields/schemas', {
+            method: 'POST', body: JSON.stringify(data),
+        });
+    }
+
+    async updateCatalogSchema(id: string, data: { isRequired?: boolean; displayOrder?: number }) {
+        return this.request<{ data: any }>(`/api/v1/metafields/schemas/${id}`, {
+            method: 'PATCH', body: JSON.stringify(data),
+        });
+    }
+
+    async removeCatalogSchema(id: string) {
+        return this.request<any>(`/api/v1/metafields/schemas/${id}`, { method: 'DELETE' });
+    }
+
+    // Values
+    async getAllMetafieldValues(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/metafields/values/all${qs}`);
+    }
+
+    async getMetafieldValues(ownerType: string, ownerId: string, storeId?: string) {
+        const qs = new URLSearchParams({ ownerType, ownerId });
+        if (storeId) qs.set('storeId', storeId);
+        return this.request<{ data: any[] }>(`/api/v1/metafields/values?${qs}`);
+    }
+
+    async upsertMetafieldValue(data: { ownerType: string; ownerId: string; definitionId: string; storeId?: string; valueJson: any }) {
+        return this.request<{ data: any }>('/api/v1/metafields/values', {
+            method: 'POST', body: JSON.stringify(data),
+        });
+    }
+
+    async updateMetafieldValue(id: string, valueJson: any) {
+        return this.request<{ data: any }>(`/api/v1/metafields/values/${id}`, {
+            method: 'PATCH', body: JSON.stringify({ valueJson }),
+        });
+    }
+
+    // Approval
+    async submitMetafieldsForReview(valueIds: string[]) {
+        return this.request<any>('/api/v1/metafields/values/submit', {
+            method: 'POST', body: JSON.stringify({ valueIds }),
+        });
+    }
+
+    async getApprovalQueue(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/metafields/approval-queue${qs}`);
+    }
+
+    async approveMetafield(valueId: string) {
+        return this.request<any>('/api/v1/metafields/approve', {
+            method: 'POST', body: JSON.stringify({ valueId }),
+        });
+    }
+
+    async bulkApproveMetafields(valueIds: string[]) {
+        return this.request<any>('/api/v1/metafields/approve', {
+            method: 'POST', body: JSON.stringify({ valueIds }),
+        });
+    }
+
+    async rejectMetafield(valueId: string, reason: string) {
+        return this.request<any>('/api/v1/metafields/reject', {
+            method: 'POST', body: JSON.stringify({ valueId, reason }),
+        });
+    }
+
+    async getMetafieldsPendingCount() {
+        return this.request<{ count: number }>('/api/v1/metafields/pending-count');
+    }
+
+    // Validation (Sprint 2.1: per-store)
+    async getProductValidation(productId: string) {
+        return this.request<{
+            global: { isValid: boolean; missingRequired: any[] } | null;
+            stores: { storeId: string; storeName: string; isValid: boolean; missingRequired: any[] }[];
+        }>(`/api/v1/metafields/validate/${productId}`);
+    }
+
+    async revalidateProduct(productId: string) {
+        return this.request<{ data: any[]; message: string }>(`/api/v1/metafields/revalidate/${productId}`, {
+            method: 'POST',
+        });
+    }
+
+    // Taxonomy
+    async searchTaxonomy(q?: string) {
+        const qs = q ? `?q=${encodeURIComponent(q)}` : '';
+        return this.request<{ data: any[] }>(`/api/v1/metafields/taxonomy${qs}`);
+    }
+
+    // Push (Sprint 2.1: scoped push)
+    async triggerMetafieldsPush(params?: {
+        storeIds?: string[]; productIds?: string[]; brandIds?: string[];
+        categoryIds?: string[]; force?: boolean;
+        storeId?: string; ownerType?: string; ownerId?: string; // legacy
+    }) {
+        return this.request<{ data: { jobId: string }; message: string }>('/api/v1/metafields/push', {
+            method: 'POST', body: JSON.stringify(params || {}),
+        });
+    }
+
+    async pushProductMetafields(productId: string, storeId?: string) {
+        const qs = storeId ? `?storeId=${storeId}` : '';
+        return this.request<{ data: { jobId: string }; message: string }>(`/api/v1/metafields/push/product/${productId}${qs}`, {
+            method: 'POST',
+        });
+    }
+
+    async pushBrandMetafields(brandId: string, storeId?: string) {
+        const qs = storeId ? `?storeId=${storeId}` : '';
+        return this.request<{ data: { jobId: string }; message: string }>(`/api/v1/metafields/push/brand/${brandId}${qs}`, {
+            method: 'POST',
+        });
+    }
+
+    // Sprint 2: Product pricing & category
+    async updateProductCategory(productId: string, shopifyCategoryId: string | null) {
+        return this.request<{ data: any }>(`/api/v1/products/${productId}/category`, {
+            method: 'PATCH', body: JSON.stringify({ shopifyCategoryId }),
+        });
+    }
+
+    async updateVariantPricing(productId: string, variantId: string, data: { vendorPrice?: number; cogs?: number }) {
+        return this.request<{ data: any }>(`/api/v1/products/${productId}/variants/${variantId}/pricing`, {
+            method: 'PATCH', body: JSON.stringify(data),
+        });
+    }
+
+    async syncMetafieldDefinitions(storeId?: string) {
+        const qs = storeId ? `?storeId=${storeId}` : '';
+        return this.request<{ data: any; message: string }>(`/api/v1/metafields/definitions/sync${qs}`, {
+            method: 'POST',
+        });
+    }
+
+    async syncMetafieldValues(storeId?: string) {
+        const qs = storeId ? `?storeId=${storeId}` : '';
+        return this.request<{ data: any; message: string }>(`/api/v1/metafields/values/sync${qs}`, {
+            method: 'POST',
+        });
+    }
 }
+
 
 export const api = new ApiClient();

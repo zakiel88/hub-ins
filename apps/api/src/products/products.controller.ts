@@ -3,6 +3,8 @@ import {
     Get,
     Post,
     Put,
+    Patch,
+    Delete,
     Body,
     Param,
     Query,
@@ -15,7 +17,13 @@ import { Roles, CurrentUser, JwtPayload } from '../auth/decorators';
 export class ProductsController {
     constructor(private readonly productsService: ProductsService) { }
 
-    // GET /api/v1/products?collectionId=&status=&category=&search=
+    @Get('products/summary')
+    @Roles('admin', 'merchandising', 'sourcing_procurement')
+    async getSummary() {
+        return this.productsService.getSummary();
+    }
+
+    // GET /api/v1/products?collectionId=&status=&category=&search=&brandId=&hasConflict=
     @Get('products')
     @Roles('admin', 'merchandising', 'sourcing_procurement')
     async findAll(
@@ -25,6 +33,8 @@ export class ProductsController {
         @Query('status') status?: string,
         @Query('search') search?: string,
         @Query('category') category?: string,
+        @Query('brandId') brandId?: string,
+        @Query('hasConflict') hasConflict?: string,
     ) {
         return this.productsService.findAll({
             collectionId,
@@ -33,6 +43,8 @@ export class ProductsController {
             status,
             search,
             category,
+            brandId,
+            hasConflict: hasConflict === 'true' ? true : hasConflict === 'false' ? false : undefined,
         });
     }
 
@@ -85,5 +97,42 @@ export class ProductsController {
     ) {
         const product = await this.productsService.update(id, body, user.sub);
         return { data: product };
+    }
+
+    // DELETE /api/v1/products/:id
+    @Delete('products/:id')
+    @Roles('admin', 'sourcing_procurement')
+    async remove(
+        @Param('id', ParseUUIDPipe) id: string,
+        @CurrentUser() user: JwtPayload,
+    ) {
+        await this.productsService.remove(id, user.sub);
+        return { message: 'Product deleted' };
+    }
+
+    // ─── Sprint 2: Category + Pricing ────────────
+
+    // PATCH /api/v1/products/:id/category
+    @Patch('products/:id/category')
+    @Roles('admin', 'merchandising')
+    async updateCategory(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Body() body: { shopifyCategoryId: string | null },
+        @CurrentUser() user: JwtPayload,
+    ) {
+        const product = await this.productsService.updateCategory(id, body.shopifyCategoryId, user.sub);
+        return { data: product };
+    }
+
+    // PATCH /api/v1/products/:productId/variants/:variantId/pricing
+    @Patch('products/:productId/variants/:variantId/pricing')
+    @Roles('admin', 'merchandising')
+    async updateVariantPricing(
+        @Param('variantId', ParseUUIDPipe) variantId: string,
+        @Body() body: { vendorPrice?: number; cogs?: number },
+        @CurrentUser() user: JwtPayload,
+    ) {
+        const variant = await this.productsService.updateVariantPricing(variantId, body, user.sub);
+        return { data: variant };
     }
 }

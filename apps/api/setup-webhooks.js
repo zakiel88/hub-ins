@@ -1,9 +1,5 @@
 /**
- * Register Shopify webhooks for Happy store
- * Topics: orders/create, orders/updated, orders/cancelled
- * 
- * NOTE: For local dev, you need ngrok or similar tunnel.
- * For production, set WEBHOOK_URL env var to your public URL.
+ * Setup webhooks for ALL active stores
  */
 const { PrismaClient } = require('@prisma/client');
 const crypto = require('crypto');
@@ -27,115 +23,92 @@ const WEBHOOK_TOPICS = [
     'orders/fulfilled',
 ];
 
+const WEBHOOK_URL = process.argv[2] || 'https://api.inecso.com/api/v1/webhooks/shopify';
+
 async function main() {
-    const store = await prisma.shopifyStore.findFirst({
-        where: { storeName: { contains: 'Happy', mode: 'insensitive' } },
+    // Get ALL stores
+    const stores = await prisma.shopifyStore.findMany({
+        orderBy: { storeName: 'asc' },
     });
-    if (!store) { console.log('Store not found'); return; }
 
-    const token = decrypt(store.accessTokenEnc, store.tokenIv);
-    console.log('Store:', store.storeName, store.shopifyDomain);
+    console.log(`Found ${stores.length} store(s):\n`);
+    for (const s of stores) {
+        console.log(`  ${s.storeName} | ${s.shopifyDomain} | active: ${s.isActive}`);
+    }
 
-    // Get callback URL
-    const webhookUrl = process.env.WEBHOOK_URL || process.argv[2];
-    if (!webhookUrl) {
-        console.log('\n⚠️  No webhook URL provided.');
-        console.log('Usage: node setup-webhooks.js https://your-public-url.ngrok.io/api/v1/webhooks/shopify');
-        console.log('Or set WEBHOOK_URL in .env');
-        console.log('\nTo set up ngrok for local dev:');
-        console.log('  1. Install ngrok: npm install -g ngrok');
-        console.log('  2. Run: ngrok http 3001');
-        console.log('  3. Copy the https URL and run this script again');
+    for (const store of stores) {
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`🏪 ${store.storeName} (${store.shopifyDomain})`);
+
+        if (!store.isActive) {
+            console.log('  ⏭️  Skipped (inactive)');
+            continue;
+        }
+
+        const token = decrypt(store.accessTokenEnc, store.tokenIv);
+
+        // Test connection first
+        const testRes = await fetch(
+            `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/shop.json`,
+            { headers: { 'X-Shopify-Access-Token': token } },
+        );
+
+        if (!testRes.ok) {
+            console.log(`  ❌ Token invalid (${testRes.status}) — needs reconnect`);
+            continue;
+        }
+        console.log('  ✅ Token valid');
+
+        // Generate webhook secret if not set
+        if (!store.webhookSecret) {
+            const secret = crypto.randomBytes(32).toString('hex');
+            await prisma.shopifyStore.update({
+                where: { id: store.id },
+                data: { webhookSecret: secret },
+            });
+            console.log('  🔑 Generated webhook secret');
+        }
 
         // List existing webhooks
-        console.log('\n📋 Existing webhooks:');
         const listRes = await fetch(
             `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/webhooks.json`,
             { headers: { 'X-Shopify-Access-Token': token } },
         );
         const listData = await listRes.json();
-        const hooks = listData.webhooks || [];
-        if (hooks.length === 0) {
-            console.log('  (none registered)');
-        } else {
-            for (const h of hooks) {
-                console.log(`  ${h.topic} → ${h.address} (id: ${h.id})`);
+        const existing = listData.webhooks || [];
+
+        // Delete old webhooks
+        if (existing.length > 0) {
+            console.log(`  🗑️  Removing ${existing.length} old webhook(s)`);
+            for (const h of existing) {
+                await fetch(
+                    `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/webhooks/${h.id}.json`,
+                    { method: 'DELETE', headers: { 'X-Shopify-Access-Token': token } },
+                );
             }
         }
-        await prisma.$disconnect();
-        return;
-    }
 
-    // Generate webhook secret if not set
-    let webhookSecret = store.webhookSecret;
-    if (!webhookSecret) {
-        webhookSecret = crypto.randomBytes(32).toString('hex');
-        await prisma.shopifyStore.update({
-            where: { id: store.id },
-            data: { webhookSecret },
-        });
-        console.log('Generated webhook secret:', webhookSecret.substring(0, 10) + '...');
-    }
-
-    // List existing webhooks first
-    const listRes = await fetch(
-        `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/webhooks.json`,
-        { headers: { 'X-Shopify-Access-Token': token } },
-    );
-    const listData = await listRes.json();
-    const existingHooks = listData.webhooks || [];
-    console.log(`\n📋 Existing webhooks: ${existingHooks.length}`);
-
-    // Delete old webhooks
-    for (const h of existingHooks) {
-        console.log(`  Deleting: ${h.topic} → ${h.address}`);
-        await fetch(
-            `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/webhooks/${h.id}.json`,
-            { method: 'DELETE', headers: { 'X-Shopify-Access-Token': token } },
-        );
-    }
-
-    // Register new webhooks
-    console.log('\n📡 Registering webhooks...');
-    for (const topic of WEBHOOK_TOPICS) {
-        const res = await fetch(
-            `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/webhooks.json`,
-            {
-                method: 'POST',
-                headers: {
-                    'X-Shopify-Access-Token': token,
-                    'Content-Type': 'application/json',
+        // Register new webhooks
+        for (const topic of WEBHOOK_TOPICS) {
+            const res = await fetch(
+                `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/webhooks.json`,
+                {
+                    method: 'POST',
+                    headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ webhook: { topic, address: WEBHOOK_URL, format: 'json' } }),
                 },
-                body: JSON.stringify({
-                    webhook: {
-                        topic,
-                        address: webhookUrl,
-                        format: 'json',
-                    },
-                }),
-            },
-        );
-
-        const data = await res.json();
-        if (res.ok) {
-            console.log(`  ✅ ${topic} → ${webhookUrl} (id: ${data.webhook?.id})`);
-        } else {
-            console.log(`  ❌ ${topic}: ${JSON.stringify(data.errors || data)}`);
+            );
+            const data = await res.json();
+            if (res.ok) {
+                console.log(`  ✅ ${topic}`);
+            } else {
+                console.log(`  ❌ ${topic}: ${JSON.stringify(data.errors || data)}`);
+            }
         }
     }
 
-    // Verify
-    console.log('\n📋 Final webhook list:');
-    const verifyRes = await fetch(
-        `https://${store.shopifyDomain}/admin/api/${store.apiVersion}/webhooks.json`,
-        { headers: { 'X-Shopify-Access-Token': token } },
-    );
-    const verifyData = await verifyRes.json();
-    for (const h of verifyData.webhooks || []) {
-        console.log(`  ${h.topic} → ${h.address}`);
-    }
-
-    console.log('\n✅ Done!');
+    console.log(`\n${'='.repeat(60)}`);
+    console.log('✅ Done!');
     await prisma.$disconnect();
 }
 
