@@ -41,7 +41,7 @@ export class MetafieldsController {
         try { latestJob = await this.metafieldsService.debugGetLatestSyncJob(); }
         catch (e: any) { latestJob = `ERROR: ${e.message}`; }
 
-        return { stores, defCount, latestJob };
+        return { version: 'v4-sql-migration', stores, defCount, latestJob };
     }
 
     // ─── Definitions ─────────────────────
