@@ -975,4 +975,29 @@ export class MetafieldsService {
         if (type?.key) return type.key;
         return 'single_line_text_field';
     }
+
+    // ─── Sync Job helpers (background job pattern) ───
+    async createSyncJob(jobType: string, storeId?: string) {
+        return this.prisma.syncJob.create({
+            data: {
+                storeId: storeId || null,
+                jobType,
+                status: 'running',
+                startedAt: new Date(),
+            },
+        });
+    }
+
+    async completeSyncJob(jobId: string, status: 'success' | 'failed', result?: any, errorMsg?: string) {
+        await this.prisma.syncJob.update({
+            where: { id: jobId },
+            data: {
+                status,
+                completedAt: new Date(),
+                processed: result?.created || 0,
+                totalItems: (result?.created || 0) + (result?.updated || 0) + (result?.skipped || 0),
+                errorMsg: errorMsg || null,
+            },
+        });
+    }
 }

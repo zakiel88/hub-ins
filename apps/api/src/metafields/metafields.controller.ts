@@ -72,15 +72,35 @@ export class MetafieldsController {
     @Post('definitions/sync')
     @Roles('admin')
     async syncDefinitions(@Query('storeId') storeId?: string) {
-        const result = await this.metafieldsService.syncDefinitionsFromShopify(storeId);
-        return { data: result, message: `Synced: ${result.created} created, ${result.updated} updated` };
+        // Create a SyncJob and return immediately — run sync in background
+        const job = await this.metafieldsService.createSyncJob('sync_definitions', storeId);
+
+        // Fire and forget — run in background
+        this.metafieldsService.syncDefinitionsFromShopify(storeId)
+            .then(async (result) => {
+                await this.metafieldsService.completeSyncJob(job.id, 'success', result);
+            })
+            .catch(async (err) => {
+                await this.metafieldsService.completeSyncJob(job.id, 'failed', null, err.message);
+            });
+
+        return { data: { jobId: job.id }, message: 'Sync started in background' };
     }
 
     @Post('values/sync')
     @Roles('admin')
     async syncValues(@Query('storeId') storeId?: string) {
-        const result = await this.metafieldsService.syncValuesFromShopify(storeId);
-        return { data: result, message: `Values synced: ${result.created} created, ${result.updated} updated, ${result.skipped} unchanged` };
+        const job = await this.metafieldsService.createSyncJob('sync_values', storeId);
+
+        this.metafieldsService.syncValuesFromShopify(storeId)
+            .then(async (result) => {
+                await this.metafieldsService.completeSyncJob(job.id, 'success', result);
+            })
+            .catch(async (err) => {
+                await this.metafieldsService.completeSyncJob(job.id, 'failed', null, err.message);
+            });
+
+        return { data: { jobId: job.id }, message: 'Sync started in background' };
     }
 
     // ─── Options Library ─────────────────

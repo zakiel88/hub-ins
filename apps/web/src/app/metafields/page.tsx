@@ -151,6 +151,15 @@ export default function MetafieldsPage() {
         try {
             const res = await api.syncMetafieldDefinitions();
             const d = res.data;
+            if (d?.jobId) {
+                setSyncMsg(`🔄 Sync started (job: ${d.jobId.slice(0, 8)}…) — refreshing in 5s…`);
+                setTimeout(() => {
+                    fetchDefinitions(); fetchCatalogDefs(); fetchProductDefs();
+                    setSyncMsg('✅ Definitions refreshed');
+                    setSyncing(false);
+                }, 5000);
+                return;
+            }
             setSyncMsg(`✅ ${d.created} created, ${d.updated} updated, ${d.skipped} skipped`);
             fetchDefinitions(); fetchCatalogDefs(); fetchProductDefs();
         } catch (err: any) { setSyncMsg(`❌ ${err.message}`); }
