@@ -4,7 +4,7 @@
     "private": true,
     "scripts": {
         "dev": "nest start --watch",
-        "build": "npx prisma generate && npx prisma db push --accept-data-loss && nest build",
+        "build": "npx prisma generate --schema=./prisma/schema.prisma && npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma && nest build",
         "start": "node dist/main",
         "start:prod": "node dist/main",
         "start:worker": "node dist/worker",
