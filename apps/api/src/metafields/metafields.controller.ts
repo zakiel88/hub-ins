@@ -28,9 +28,19 @@ export class MetafieldsController {
     @Get('debug-sync')
     @Public()
     async debugSync() {
-        const stores = await this.metafieldsService.debugGetStores();
-        const defCount = await this.metafieldsService.debugGetDefinitionCount();
-        const latestJob = await this.metafieldsService.debugGetLatestSyncJob();
+        let stores: any = null;
+        let defCount: any = null;
+        let latestJob: any = null;
+
+        try { stores = await this.metafieldsService.debugGetStores(); }
+        catch (e: any) { stores = `ERROR: ${e.message}`; }
+
+        try { defCount = await this.metafieldsService.debugGetDefinitionCount(); }
+        catch (e: any) { defCount = `ERROR: ${e.message}`; }
+
+        try { latestJob = await this.metafieldsService.debugGetLatestSyncJob(); }
+        catch (e: any) { latestJob = `ERROR: ${e.message}`; }
+
         return { stores, defCount, latestJob };
     }
 
