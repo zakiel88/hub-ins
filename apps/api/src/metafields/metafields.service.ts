@@ -1073,37 +1073,4 @@ export class MetafieldsService {
         } catch { /* ignore log failures */ }
     }
 
-    // ─── TEMP: Debug helpers (REMOVE after debugging) ───
-    async debugGetStores() {
-        const stores = await this.prisma.shopifyStore.findMany({
-            where: { isActive: true },
-            select: {
-                id: true, storeName: true, shopifyDomain: true,
-                apiVersion: true, scopes: true,
-                accessTokenEnc: true,
-            },
-        });
-        return stores.map(s => ({
-            id: s.id,
-            storeName: s.storeName,
-            shopifyDomain: s.shopifyDomain,
-            apiVersion: s.apiVersion,
-            scopes: s.scopes,
-            hasToken: !!s.accessTokenEnc,
-        }));
-    }
-
-    async debugGetDefinitionCount() {
-        return this.prisma.metafieldDefinition.count();
-    }
-
-    async debugGetLatestSyncJob() {
-        return this.prisma.syncJob.findFirst({
-            where: { jobType: { startsWith: 'sync' } },
-            orderBy: { createdAt: 'desc' },
-            include: {
-                logs: { orderBy: { createdAt: 'asc' }, take: 50 },
-            },
-        });
-    }
 }

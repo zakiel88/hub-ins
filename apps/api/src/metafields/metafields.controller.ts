@@ -13,7 +13,7 @@ import {
 import { MetafieldsService } from './metafields.service';
 import { MetafieldsPushService, PushParams } from './metafields-push.service';
 import { CatalogValidationService } from './catalog-validation.service';
-import { Roles, Public } from '../auth/decorators';
+import { Roles } from '../auth/decorators';
 import { searchTaxonomy, getTaxonomyCategories } from './taxonomy';
 
 @Controller('api/v1/metafields')
@@ -23,26 +23,6 @@ export class MetafieldsController {
         private readonly pushService: MetafieldsPushService,
         private readonly catalogValidation: CatalogValidationService,
     ) { }
-
-    // ─── TEMP: Diagnostic endpoint (REMOVE after debugging) ───
-    @Get('debug-sync')
-    @Public()
-    async debugSync() {
-        let stores: any = null;
-        let defCount: any = null;
-        let latestJob: any = null;
-
-        try { stores = await this.metafieldsService.debugGetStores(); }
-        catch (e: any) { stores = `ERROR: ${e.message}`; }
-
-        try { defCount = await this.metafieldsService.debugGetDefinitionCount(); }
-        catch (e: any) { defCount = `ERROR: ${e.message}`; }
-
-        try { latestJob = await this.metafieldsService.debugGetLatestSyncJob(); }
-        catch (e: any) { latestJob = `ERROR: ${e.message}`; }
-
-        return { version: 'v5-split-sql', stores, defCount, latestJob };
-    }
 
     // ─── Definitions ─────────────────────
 
