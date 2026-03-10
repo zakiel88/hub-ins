@@ -77,10 +77,25 @@ export class ProductsV2Controller {
                 IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'IssueSeverity') THEN CREATE TYPE "IssueSeverity" AS ENUM ('ERROR', 'WARNING', 'INFO'); END IF;
                 IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'IssueStatus') THEN CREATE TYPE "IssueStatus" AS ENUM ('OPEN', 'RESOLVED', 'IGNORED'); END IF;
             END $$`,
+            // ── Products table — add ALL columns Prisma expects ──
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS collection_id UUID REFERENCES collections(id)`,
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS style_code VARCHAR(100)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS title VARCHAR(500)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS material VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS season VARCHAR(50)`,
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS featured_image_url TEXT`,
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS availability_type VARCHAR(50)`,
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS lead_time_days INT`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'DRAFT'`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()`,
+            `CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_products_collection ON products(collection_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_products_status ON products(status)`,
             `CREATE INDEX IF NOT EXISTS idx_products_style_code ON products(style_code)`,
             `CREATE TABLE IF NOT EXISTS variant_groups (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
