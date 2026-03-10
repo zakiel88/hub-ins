@@ -128,21 +128,22 @@ export class MetafieldsPushService {
                     }
 
                     // Get candidate publications
-                    let publications = await this.prisma.productPublication.findMany({
+                    let publications = await this.prisma.shopifyProductMap.findMany({
                         where: pubWhere,
                         include: {
                             product: {
                                 select: {
-                                    id: true, name: true, brandId: true,
-                                    shopifyCategoryId: true,
-                                },
-                            },
-                            variantPublications: {
-                                include: {
-                                    colorway: { select: { id: true, sku: true } },
+                                    id: true, title: true, brandId: true,
+                                    storeMaps: { select: { shopifyCategoryId: true }, take: 1 },
                                 },
                             },
                         },
+                    });
+
+                    // Get variant maps for this store to push variant-level metafields
+                    const variantMaps = await this.prisma.shopifyVariantMap.findMany({
+                        where: { storeId: store.id },
+                        include: { variant: { select: { id: true, sku: true } } },
                     });
 
                     // Apply brand filter (Sprint 2.1)
@@ -155,7 +156,10 @@ export class MetafieldsPushService {
                     // Apply category filter (Sprint 2.1)
                     if (params.categoryIds?.length) {
                         publications = publications.filter(
-                            (pub: any) => pub.product.shopifyCategoryId && params.categoryIds!.includes(pub.product.shopifyCategoryId),
+                            (pub: any) => {
+                                const catId = pub.product.storeMaps?.[0]?.shopifyCategoryId;
+                                return catId && params.categoryIds!.includes(catId);
+                            },
                         );
                     }
 
@@ -176,7 +180,7 @@ export class MetafieldsPushService {
                                 .join(', ');
 
                             await this.addLog(jobId, 'warn',
-                                `⛔ Skipping ${pub.product.name}: missing required fields [${missingKeys}]`,
+                                `⛔ Skipping ${pub.product.title}: missing required fields [${missingKeys}]`,
                                 { productId: pub.productId, storeId: store.id, missing: validation.missingRequired },
                                 { storeId: store.id },
                             );
@@ -201,23 +205,20 @@ export class MetafieldsPushService {
                             failed += result.failed;
                         }
 
-                        // Push VARIANT-level metafields
-                        for (const vPub of pub.variantPublications) {
-                            const variantMap = await this.prisma.shopifyVariantMap.findFirst({
-                                where: { storeId: store.id, colorwayId: vPub.colorwayId },
-                            });
-
-                            if (variantMap) {
-                                const result = await this.pushOwnerMetafields(
-                                    jobId, store, token,
-                                    'VARIANT', vPub.colorwayId,
-                                    'variants', variantMap.shopifyVariantId.toString(),
-                                    params.force || false,
-                                );
-                                totalItems += result.total;
-                                processed += result.processed;
-                                failed += result.failed;
-                            }
+                        // Push VARIANT-level metafields (using variant maps for this store)
+                        const pubVariantMaps = variantMaps.filter(vm =>
+                            vm.variant && publications.some(p => p.productId === pub.productId)
+                        );
+                        for (const vm of pubVariantMaps) {
+                            const result = await this.pushOwnerMetafields(
+                                jobId, store, token,
+                                'VARIANT', vm.variantId,
+                                'variants', vm.shopifyVariantId.toString(),
+                                params.force || false,
+                            );
+                            totalItems += result.total;
+                            processed += result.processed;
+                            failed += result.failed;
                         }
                     }
                 } catch (err: any) {

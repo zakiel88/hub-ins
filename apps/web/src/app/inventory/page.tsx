@@ -19,8 +19,8 @@ export default function InventoryPage() {
     // Stock upsert modal
     const [showUpsert, setShowUpsert] = useState(false);
     const [savingStock, setSavingStock] = useState(false);
-    const [colorways, setColorways] = useState<any[]>([]);
-    const [stockForm, setStockForm] = useState({ colorwayId: '', warehouseId: '', quantityOnHand: '0', quantityReserved: '0' });
+    const [variants, setVariants] = useState<any[]>([]);
+    const [stockForm, setStockForm] = useState({ variantId: '', warehouseId: '', quantityOnHand: '0', quantityReserved: '0' });
 
     // Stock adjust modal
     const [adjusting, setAdjusting] = useState<any>(null);
@@ -43,8 +43,8 @@ export default function InventoryPage() {
 
     const loadRefs = async () => {
         try {
-            const [cw, wh] = await Promise.all([api.getColorways(), api.getWarehouses()]);
-            setColorways(cw.data); setWarehouses(wh.data);
+            const [vr, wh] = await Promise.all([api.getVariants(), api.getWarehouses()]);
+            setVariants(vr.data); setWarehouses(wh.data);
         } catch { /* */ }
     };
 
@@ -68,13 +68,13 @@ export default function InventoryPage() {
         setSavingStock(true);
         try {
             await api.upsertInventory({
-                colorwayId: stockForm.colorwayId,
+                colorwayId: stockForm.variantId,
                 warehouseId: stockForm.warehouseId,
                 quantityOnHand: parseInt(stockForm.quantityOnHand),
                 quantityReserved: parseInt(stockForm.quantityReserved),
             });
             setShowUpsert(false);
-            setStockForm({ colorwayId: '', warehouseId: '', quantityOnHand: '0', quantityReserved: '0' });
+            setStockForm({ variantId: '', warehouseId: '', quantityOnHand: '0', quantityReserved: '0' });
             load();
         } catch (err: any) { alert(err.message); }
         finally { setSavingStock(false); }
@@ -245,12 +245,12 @@ export default function InventoryPage() {
                         <form onSubmit={handleUpsert}>
                             <div className="modal-body">
                                 <div className="form-group">
-                                    <label className="form-label">SKU (Colorway) *</label>
-                                    <select className="form-select" required value={stockForm.colorwayId}
-                                        onChange={(e) => setStockForm({ ...stockForm, colorwayId: e.target.value })}>
+                                    <label className="form-label">SKU (Variant) *</label>
+                                    <select className="form-select" required value={stockForm.variantId}
+                                        onChange={(e) => setStockForm({ ...stockForm, variantId: e.target.value })}>
                                         <option value="">Select SKU…</option>
-                                        {colorways.map((cw) => (
-                                            <option key={cw.id} value={cw.id}>{cw.sku} — {cw.product?.name} ({cw.color}/{cw.size})</option>
+                                        {variants.map((v) => (
+                                            <option key={v.id} value={v.id}>{v.sku} — {v.product?.title} ({v.color}/{v.size})</option>
                                         ))}
                                     </select>
                                 </div>

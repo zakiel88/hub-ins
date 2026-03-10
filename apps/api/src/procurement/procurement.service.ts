@@ -118,18 +118,18 @@ export class ProcurementService {
             this.logger.log(`OrderLineItem ${orderItem.id} → IN_STOCK (PR ${prId} received)`);
 
             // 2) Upsert InventoryItem if colorwayId is mapped
-            if (orderItem.colorwayId) {
+            if (orderItem.variantId) {
                 const defaultWarehouse = await this.prisma.warehouse.findFirst();
                 if (defaultWarehouse) {
                     await this.prisma.inventoryItem.upsert({
                         where: {
-                            uq_inv_colorway_warehouse: {
-                                colorwayId: orderItem.colorwayId,
+                            uq_inv_variant_warehouse: {
+                                variantId: orderItem.variantId,
                                 warehouseId: defaultWarehouse.id,
                             },
                         },
                         create: {
-                            colorwayId: orderItem.colorwayId,
+                            variantId: orderItem.variantId,
                             warehouseId: defaultWarehouse.id,
                             quantityOnHand: pr.qtyNeeded,
                         },
@@ -137,7 +137,7 @@ export class ProcurementService {
                             quantityOnHand: { increment: pr.qtyNeeded },
                         },
                     });
-                    this.logger.log(`Inventory +${pr.qtyNeeded} for colorway ${orderItem.colorwayId}`);
+                    this.logger.log(`Inventory +${pr.qtyNeeded} for variant ${orderItem.variantId}`);
                 }
             }
 

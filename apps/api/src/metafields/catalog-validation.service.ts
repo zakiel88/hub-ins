@@ -30,7 +30,7 @@ export class CatalogValidationService {
     async revalidateProduct(productId: string): Promise<ValidationResult[]> {
         const product = await this.prisma.product.findUnique({
             where: { id: productId },
-            select: { id: true, shopifyCategoryId: true },
+            select: { id: true, storeMaps: { select: { shopifyCategoryId: true }, take: 1 } },
         });
 
         if (!product) {
@@ -39,7 +39,8 @@ export class CatalogValidationService {
         }
 
         // If no category assigned, product is valid everywhere — clear any existing state
-        if (!product.shopifyCategoryId) {
+        const categoryId = product.storeMaps?.[0]?.shopifyCategoryId;
+        if (!categoryId) {
             await this.prisma.productValidationState.deleteMany({
                 where: { productId },
             });
@@ -49,7 +50,7 @@ export class CatalogValidationService {
         // Get all required definitions for this category
         const requiredSchemas = await this.prisma.catalogMetafieldSchema.findMany({
             where: {
-                shopifyCategoryId: product.shopifyCategoryId,
+                shopifyCategoryId: categoryId,
                 isRequired: true,
             },
             include: { definition: true },

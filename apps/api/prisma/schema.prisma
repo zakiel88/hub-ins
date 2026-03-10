@@ -54,16 +54,13 @@ model ShopifyStore {
 
   orders                 Order[]
   inventoryItems         InventoryItem[]
-  shopifyProductMappings ShopifyProductMapping[]
-  pricePublishLogs       PricePublishLog[]
   syncLogs               SyncLog[]
   webhookEvents          WebhookEvent[]
   userAccess             UserStoreAccess[]
-  productPublications    ProductPublication[]
-  variantPublications    VariantPublication[]
   shopifyProductMaps     ShopifyProductMap[]
   shopifyVariantMaps     ShopifyVariantMap[]
   syncJobs               SyncJob[]
+  productSyncJobs        ProductSyncJob[] @relation("ProductSyncStore")
   metafieldValues        MetafieldValue[] @relation("MetafieldValueStore")
   validationStates       ProductValidationState[] @relation("ValidationStore")
 
@@ -93,9 +90,7 @@ model User {
   ownedBrands  Brand[]  @relation("BrandOwner")
 
   // Other relations
-  marketPricesReviewed MarketPrice[] @relation("PriceReviewer")
   importBatches        ImportBatch[]
-  pricePublishLogs     PricePublishLog[]
   auditLogs            AuditLog[]
   passwordResetTokens  PasswordResetToken[]
   tasksAssigned        Task[]          @relation("TaskAssignee")
@@ -205,6 +200,7 @@ model Brand {
   procurementRequests  ProcurementRequest[]
   purchaseOrders       PurchaseOrder[]
   products             Product[]    @relation("ProductBrand")
+  productSyncJobs      ProductSyncJob[] @relation("IntakeBrand")
 
   @@index([status], name: "idx_brands_status")
   @@index([ownerUserId], name: "idx_brands_owner")
@@ -279,195 +275,180 @@ model Collection {
 }
 
 // ═══════════════════════════════════════
-// Phase D — Catalog hierarchy
+// Products Management v3.1
 // ═══════════════════════════════════════
 
-model Product {
-  id                String   @id @default(uuid()) @db.Uuid
-  collectionId      String?  @map("collection_id") @db.Uuid
-  brandId           String?  @map("brand_id") @db.Uuid
-  name              String   @db.VarChar(255)
-  skuPrefix         String?  @map("sku_prefix") @db.VarChar(100)
-  category          String?  @db.VarChar(100)
-  shopifyCategoryId String?  @map("shopify_category_id") @db.VarChar(100)
-  material          String?  @db.VarChar(100)
-  description       String?
-  wholesalePrice    Decimal? @map("wholesale_price") @db.Decimal(10, 2)
-  productType       String?  @map("product_type") @db.VarChar(100)
-  tags              String[] @default([])
-  media             Json?    @default("[]")
-  handle            String?  @db.VarChar(255)
-  vendor            String?  @db.VarChar(255)
-  hasConflict       Boolean  @default(false) @map("has_conflict")
-  status            String   @default("active") @db.VarChar(20)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
 
-  collection   Collection?        @relation(fields: [collectionId], references: [id])
-  brand        Brand?             @relation("ProductBrand", fields: [brandId], references: [id])
-  colorways    Colorway[]
-  publications ProductPublication[]
-  productMaps  ShopifyProductMap[]
+enum VariantStatus {
+  ACTIVE
+  DRAFT
+  DISCONTINUED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum SyncAction {
+  CREATED
+  UPDATED
+  SKIPPED
+  FAILED
+}
+
+enum IssueSeverity {
+  ERROR
+  WARNING
+  INFO
+}
+
+enum IssueStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
+// ─── Product (source-agnostic master) ──────────
+
+model Product {
+  id              String        @id @default(uuid()) @db.Uuid
+  brandId         String?       @map("brand_id") @db.Uuid
+  collectionId    String?       @map("collection_id") @db.Uuid
+  styleCode       String?       @map("style_code") @db.VarChar(100)
+  title           String        @db.VarChar(500)
+  description     String?
+  productType     String?       @map("product_type") @db.VarChar(200)
+  category        String?       @db.VarChar(200)
+  material        String?       @db.VarChar(200)
+  season          String?       @db.VarChar(50)
+  featuredImageUrl String?      @map("featured_image_url")
+  availabilityType String?      @map("availability_type") @db.VarChar(50)
+  leadTimeDays    Int?          @map("lead_time_days")
+  status          ProductStatus @default(DRAFT)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+
+  brand       Brand?            @relation("ProductBrand", fields: [brandId], references: [id])
+  collection  Collection?       @relation(fields: [collectionId], references: [id])
+  variantGroups VariantGroup[]
+  variants    ProductVariant[]
+  images      ProductImage[]
+  storeMaps   ShopifyProductMap[]
+  issues      ProductIssue[]
   validationStates ProductValidationState[]
 
-  @@index([collectionId], name: "idx_products_collection")
   @@index([brandId], name: "idx_products_brand")
+  @@index([collectionId], name: "idx_products_collection")
   @@index([status], name: "idx_products_status")
-  @@index([hasConflict], name: "idx_products_conflict")
-  @@index([shopifyCategoryId], name: "idx_products_shopify_category")
+  @@index([styleCode], name: "idx_products_style_code")
   @@map("products")
 }
 
-model Colorway {
-  id             String   @id @default(uuid()) @db.Uuid
-  productId      String   @map("product_id") @db.Uuid
-  sku            String   @unique @db.VarChar(100)
-  color          String   @db.VarChar(100)
-  size           String   @db.VarChar(50)
-  barcode        String?  @db.VarChar(50)
-  weightGrams    Int?     @map("weight_grams")
-  images         Json?    @default("[]")
-  option1        String?  @db.VarChar(255)
-  option2        String?  @db.VarChar(255)
-  option3        String?  @db.VarChar(255)
-  price          Decimal? @db.Decimal(12, 2)
-  compareAtPrice Decimal? @map("compare_at_price") @db.Decimal(12, 2)
-  vendorPrice    Decimal? @map("vendor_price") @db.Decimal(12, 2)
-  cogs           Decimal? @db.Decimal(12, 2)
-  imageUrl       String?  @map("image_url")
-  status         String   @default("active") @db.VarChar(20)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+// ─── VariantGroup (INS internal grouping layer) ──────────
+// Business rule: one color/material combo per product.
+// sizeRun is String[] — MVP choice; future path: normalized SizeOption table.
 
-  product             Product               @relation(fields: [productId], references: [id])
-  marketPrices        MarketPrice[]
-  inventoryItems      InventoryItem[]
-  orderLineItems      OrderLineItem[]
-  shopifyMappings     ShopifyProductMapping[]
+model VariantGroup {
+  id         String   @id @default(uuid()) @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  color      String?  @db.VarChar(100)
+  material   String?  @db.VarChar(200)
+  sizeRun    String[] @map("size_run")
+  imageUrl   String?  @map("image_url")
+  position   Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  product  Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variants ProductVariant[]
+
+  @@index([productId], name: "idx_vg_product")
+  @@unique([productId, color, material], name: "uq_vg_product_color_material")
+  @@map("variant_groups")
+}
+
+// ─── ProductVariant (SKU = business key) ──────────
+
+model ProductVariant {
+  id                 String        @id @default(uuid()) @db.Uuid
+  productId          String        @map("product_id") @db.Uuid
+  variantGroupId     String?       @map("variant_group_id") @db.Uuid
+  sku                String        @unique @db.VarChar(100)
+  title              String?       @db.VarChar(500)
+  color              String?       @db.VarChar(100)
+  size               String?       @db.VarChar(50)
+  option1            String?       @db.VarChar(255)
+  option2            String?       @db.VarChar(255)
+  option3            String?       @db.VarChar(255)
+  barcode            String?       @db.VarChar(100)
+  weightGrams        Int?          @map("weight_grams")
+  price              Decimal?      @db.Decimal(12,2)
+  compareAtPrice     Decimal?      @map("compare_at_price") @db.Decimal(12,2)
+  vendorCost         Decimal?      @map("vendor_cost") @db.Decimal(12,2)
+  insDiscountType    DiscountType? @map("ins_discount_type")
+  insDiscountValue   Decimal?      @map("ins_discount_value") @db.Decimal(12,2)
+  estimatedMargin    Decimal?      @map("estimated_margin") @db.Decimal(5,2)
+  imageUrl           String?       @map("image_url")
+  status             VariantStatus @default(DRAFT)
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+
+  product               Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantGroup          VariantGroup?          @relation(fields: [variantGroupId], references: [id])
+  storeMaps             ShopifyVariantMap[]
+  issues                ProductIssue[]
+  orderLineItems        OrderLineItem[]
+  inventoryItems        InventoryItem[]
   inventoryReservations InventoryReservation[]
-  variantPublications VariantPublication[]
-  variantMaps         ShopifyVariantMap[]
 
-  @@index([productId], name: "idx_colorways_product")
-  @@index([barcode], name: "idx_colorways_barcode")
-  @@map("colorways")
+  @@index([productId], name: "idx_variants_product")
+  @@index([variantGroupId], name: "idx_variants_vg")
+  @@index([barcode], name: "idx_variants_barcode")
+  @@map("product_variants")
 }
 
-// ═══════════════════════════════════════
-// Phase E — Cross-domain
-// ═══════════════════════════════════════
+// ─── ProductImage (master/shared in MVP) ──────────
 
-model MarketPrice {
-  id           String    @id @default(uuid()) @db.Uuid
-  colorwayId   String    @map("colorway_id") @db.Uuid
-  market       String    @db.VarChar(20)
-  retailPrice  Decimal   @map("retail_price") @db.Decimal(10, 2)
-  comparePrice Decimal?  @map("compare_price") @db.Decimal(10, 2)
-  currency     String    @db.VarChar(3)
-  status       String    @default("draft") @db.VarChar(20)
-  reviewedBy   String?   @map("reviewed_by") @db.Uuid
-  reviewedAt   DateTime? @map("reviewed_at") @db.Timestamptz()
-  reviewNotes  String?   @map("review_notes")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+model ProductImage {
+  id         String   @id @default(uuid()) @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  src        String
+  alt        String?  @db.VarChar(500)
+  position   Int      @default(0)
+  width      Int?
+  height     Int?
+  shopifyId  BigInt?  @map("shopify_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  colorway        Colorway         @relation(fields: [colorwayId], references: [id])
-  reviewer        User?            @relation("PriceReviewer", fields: [reviewedBy], references: [id])
-  pricePublishLogs PricePublishLog[]
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([colorwayId, market], name: "uq_mp_colorway_market")
-  @@index([status], name: "idx_mp_status")
-  @@map("market_prices")
+  @@index([productId], name: "idx_pimg_product")
+  @@map("product_images")
 }
 
-model ShopifyProductMapping {
-  id                  String    @id @default(uuid()) @db.Uuid
-  colorwayId          String?   @map("colorway_id") @db.Uuid
-  shopifyStoreId      String    @map("shopify_store_id") @db.Uuid
-  shopifyProductId    BigInt    @map("shopify_product_id")
-  shopifyVariantId    BigInt    @map("shopify_variant_id")
-  shopifyInventoryId  BigInt?   @map("shopify_inventory_id")
-  shopifySku          String?   @map("shopify_sku") @db.VarChar(100)
-  shopifyTitle        String?   @map("shopify_title") @db.VarChar(255)
-  mappingStatus       String    @default("unmatched") @map("mapping_status") @db.VarChar(20)
-  matchedBy           String?   @map("matched_by") @db.VarChar(20)
-  matchedAt           DateTime? @map("matched_at") @db.Timestamptz()
-  lastSyncedAt        DateTime? @map("last_synced_at") @db.Timestamptz()
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
-
-  colorway     Colorway?    @relation(fields: [colorwayId], references: [id])
-  shopifyStore ShopifyStore @relation(fields: [shopifyStoreId], references: [id])
-
-  @@unique([shopifyStoreId, shopifyVariantId], name: "uq_spm_store_variant")
-  @@index([colorwayId], name: "idx_spm_colorway")
-  @@index([shopifyStoreId], name: "idx_spm_store")
-  @@index([mappingStatus], name: "idx_spm_status")
-  @@index([shopifySku], name: "idx_spm_shopify_sku")
-  @@map("shopify_product_mappings")
-}
-
-// ═══════════════════════════════════════
-// Sprint 1 — PIM Publication Layer
-// ═══════════════════════════════════════
-
-model ProductPublication {
-  id               String   @id @default(uuid()) @db.Uuid
-  storeId          String   @map("store_id") @db.Uuid
-  productId        String   @map("product_id") @db.Uuid
-  storeTitle       String?  @map("store_title") @db.VarChar(500)
-  storeDescription String?  @map("store_description")
-  storeStatus      String   @default("active") @map("store_status") @db.VarChar(20)
-  handle           String?  @db.VarChar(255)
-  tagsOverride     String[] @default([]) @map("tags_override")
-  shopifyProductId BigInt?  @map("shopify_product_id")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
-
-  store   ShopifyStore @relation(fields: [storeId], references: [id])
-  product Product      @relation(fields: [productId], references: [id])
-  variantPublications VariantPublication[]
-
-  @@unique([storeId, productId], name: "uq_pub_store_product")
-  @@index([storeId], name: "idx_pub_store")
-  @@map("product_publications")
-}
-
-model VariantPublication {
-  id               String   @id @default(uuid()) @db.Uuid
-  publicationId    String   @map("publication_id") @db.Uuid
-  colorwayId       String   @map("colorway_id") @db.Uuid
-  storeId          String   @map("store_id") @db.Uuid
-  priceOverride    Decimal? @map("price_override") @db.Decimal(12, 2)
-  currentPrice     Decimal? @map("current_price") @db.Decimal(12, 2)
-  compareAtPrice   Decimal? @map("compare_at_price") @db.Decimal(12, 2)
-  status           String   @default("active") @db.VarChar(20)
-  shopifyVariantId BigInt?  @map("shopify_variant_id")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
-
-  publication ProductPublication @relation(fields: [publicationId], references: [id])
-  colorway    Colorway           @relation(fields: [colorwayId], references: [id])
-  store       ShopifyStore       @relation(fields: [storeId], references: [id])
-
-  @@unique([storeId, colorwayId], name: "uq_vpub_store_variant")
-  @@index([publicationId], name: "idx_vpub_publication")
-  @@map("variant_publications")
-}
-
-// ═══════════════════════════════════════
-// Sprint 1 — Shopify Mapping Tables
-// ═══════════════════════════════════════
+// ─── ShopifyProductMap (source-specific fields) ──────────
 
 model ShopifyProductMap {
-  id               String    @id @default(uuid()) @db.Uuid
-  storeId          String    @map("store_id") @db.Uuid
-  productId        String    @map("product_id") @db.Uuid
-  shopifyProductId BigInt    @map("shopify_product_id")
-  handle           String?   @db.VarChar(255)
-  lastHash         String?   @map("last_hash") @db.VarChar(64)
-  syncedAt         DateTime? @map("synced_at") @db.Timestamptz()
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  id                String    @id @default(uuid()) @db.Uuid
+  storeId           String    @map("store_id") @db.Uuid
+  productId         String    @map("product_id") @db.Uuid
+  shopifyProductId  BigInt    @map("shopify_product_id")
+  handle            String?   @db.VarChar(255)
+  shopifyStatus     String?   @map("shopify_status") @db.VarChar(20)
+  vendor            String?   @db.VarChar(255)
+  tags              String[]  @default([])
+  bodyHtml          String?   @map("body_html")
+  shopifyCategoryId String?   @map("shopify_category_id") @db.VarChar(100)
+  rawSnapshot       Json?     @map("raw_snapshot")
+  lastHash          String?   @map("last_hash") @db.VarChar(64)
+  syncedAt          DateTime? @map("synced_at") @db.Timestamptz()
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
   store   ShopifyStore @relation(fields: [storeId], references: [id])
   product Product      @relation(fields: [productId], references: [id])
@@ -477,22 +458,96 @@ model ShopifyProductMap {
   @@map("shopify_product_maps")
 }
 
+// ─── ShopifyVariantMap ──────────
+
 model ShopifyVariantMap {
   id                String    @id @default(uuid()) @db.Uuid
   storeId           String    @map("store_id") @db.Uuid
-  colorwayId        String    @map("colorway_id") @db.Uuid
+  variantId         String    @map("variant_id") @db.Uuid
   shopifyVariantId  BigInt    @map("shopify_variant_id")
   inventoryItemId   BigInt?   @map("inventory_item_id")
+  shopifySku        String?   @map("shopify_sku") @db.VarChar(100)
+  rawSnapshot       Json?     @map("raw_snapshot")
   syncedAt          DateTime? @map("synced_at") @db.Timestamptz()
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
-  store    ShopifyStore @relation(fields: [storeId], references: [id])
-  colorway Colorway     @relation(fields: [colorwayId], references: [id])
+  store    ShopifyStore    @relation(fields: [storeId], references: [id])
+  variant  ProductVariant  @relation(fields: [variantId], references: [id])
 
   @@unique([storeId, shopifyVariantId], name: "uq_svmap_store_variant")
-  @@index([colorwayId], name: "idx_svmap_colorway")
+  @@index([variantId], name: "idx_svmap_variant")
+  @@index([shopifySku], name: "idx_svmap_sku")
   @@map("shopify_variant_maps")
 }
+
+// ─── ProductSyncJob ──────────
+
+model ProductSyncJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  storeId     String?   @map("store_id") @db.Uuid
+  brandId     String?   @map("brand_id") @db.Uuid
+  source      String    @default("shopify") @db.VarChar(20)
+  status      String    @default("running") @db.VarChar(20)
+  totalItems  Int       @default(0) @map("total_items")
+  created     Int       @default(0)
+  updated     Int       @default(0)
+  skipped     Int       @default(0)
+  failed      Int       @default(0)
+  errorMsg    String?   @map("error_msg")
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz()
+  completedAt DateTime? @map("completed_at") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  store ShopifyStore? @relation("ProductSyncStore", fields: [storeId], references: [id])
+  brand Brand?        @relation("IntakeBrand", fields: [brandId], references: [id])
+  logs  ProductSyncLog[]
+
+  @@index([storeId], name: "idx_psj_store")
+  @@index([brandId], name: "idx_psj_brand")
+  @@map("product_sync_jobs")
+}
+
+// ─── ProductSyncLog ──────────
+
+model ProductSyncLog {
+  id        String     @id @default(uuid()) @db.Uuid
+  jobId     String     @map("job_id") @db.Uuid
+  action    SyncAction
+  level     String     @default("info") @db.VarChar(10)
+  message   String
+  data      Json?
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+
+  job ProductSyncJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId], name: "idx_psl_job")
+  @@map("product_sync_logs")
+}
+
+// ─── ProductIssue ──────────
+
+model ProductIssue {
+  id         String        @id @default(uuid()) @db.Uuid
+  productId  String?       @map("product_id") @db.Uuid
+  variantId  String?       @map("variant_id") @db.Uuid
+  ruleCode   String        @map("rule_code") @db.VarChar(50)
+  severity   IssueSeverity @default(WARNING)
+  status     IssueStatus   @default(OPEN)
+  message    String
+  resolvedBy String?       @map("resolved_by") @db.Uuid
+  resolvedAt DateTime?     @map("resolved_at") @db.Timestamptz()
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+
+  product Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([productId], name: "idx_pi_product")
+  @@index([variantId], name: "idx_pi_variant")
+  @@index([status], name: "idx_pi_status")
+  @@index([ruleCode], name: "idx_pi_rule")
+  @@map("product_issues")
+}
+
 
 // ═══════════════════════════════════════
 // Sprint 1 — Job Queue (DB-based)
@@ -609,7 +664,7 @@ model Order {
 model OrderLineItem {
   id                  String   @id @default(uuid()) @db.Uuid
   orderId             String   @map("order_id") @db.Uuid
-  colorwayId          String?  @map("colorway_id") @db.Uuid
+  variantId           String?  @map("variant_id") @db.Uuid
   brandId             String?  @map("brand_id") @db.Uuid
   shopifyLineItemId   BigInt   @map("shopify_line_item_id")
   shopifyVariantId    BigInt?  @map("shopify_variant_id")
@@ -623,14 +678,14 @@ model OrderLineItem {
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   order                  Order                  @relation(fields: [orderId], references: [id])
-  colorway               Colorway?              @relation(fields: [colorwayId], references: [id])
+  variant                ProductVariant?        @relation(fields: [variantId], references: [id])
   brand                  Brand?                 @relation(fields: [brandId], references: [id])
   inventoryReservations  InventoryReservation[]
   procurementRequests    ProcurementRequest[]
 
   @@unique([orderId, shopifyLineItemId], name: "uq_oli_order_shopify")
   @@index([orderId], name: "idx_oli_order")
-  @@index([colorwayId], name: "idx_oli_colorway")
+  @@index([variantId], name: "idx_oli_variant")
   @@index([brandId], name: "idx_oli_brand")
   @@index([itemState], name: "idx_oli_item_state")
   @@map("order_line_items")
@@ -681,7 +736,7 @@ model TaskComment {
 model InventoryReservation {
   id          String    @id @default(uuid()) @db.Uuid
   orderItemId String    @map("order_item_id") @db.Uuid
-  colorwayId  String?   @map("colorway_id") @db.Uuid
+  variantId   String?   @map("variant_id") @db.Uuid
   sku         String    @db.VarChar(100)
   warehouseId String    @map("warehouse_id") @db.Uuid
   qtyReserved Int       @map("qty_reserved")
@@ -690,7 +745,7 @@ model InventoryReservation {
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   orderItem OrderLineItem @relation(fields: [orderItemId], references: [id])
-  colorway  Colorway?     @relation(fields: [colorwayId], references: [id])
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
   warehouse Warehouse     @relation(fields: [warehouseId], references: [id])
 
   @@index([orderItemId], name: "idx_ir_order_item")
@@ -761,7 +816,7 @@ model PurchaseOrderItem {
 
 model InventoryItem {
   id                     String    @id @default(uuid()) @db.Uuid
-  colorwayId             String    @map("colorway_id") @db.Uuid
+  variantId              String    @map("variant_id") @db.Uuid
   warehouseId            String    @map("warehouse_id") @db.Uuid
   quantityOnHand         Int       @default(0) @map("quantity_on_hand")
   quantityReserved       Int       @default(0) @map("quantity_reserved")
@@ -772,12 +827,12 @@ model InventoryItem {
   lastCountedAt          DateTime? @map("last_counted_at") @db.Timestamptz()
   updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
-  colorway     Colorway     @relation(fields: [colorwayId], references: [id])
+  variant      ProductVariant @relation(fields: [variantId], references: [id])
   warehouse    Warehouse    @relation(fields: [warehouseId], references: [id])
   sourceStore  ShopifyStore? @relation(fields: [lastSyncSourceStoreId], references: [id])
 
-  @@unique([colorwayId, warehouseId], name: "uq_inv_colorway_warehouse")
-  @@index([colorwayId], name: "idx_inv_colorway")
+  @@unique([variantId, warehouseId], name: "uq_inv_variant_warehouse")
+  @@index([variantId], name: "idx_inv_variant")
   @@index([warehouseId], name: "idx_inv_warehouse")
   @@index([syncStatus], name: "idx_inv_sync_status")
   @@map("inventory_items")
@@ -820,36 +875,13 @@ model ImportRow {
   status        String   @default("pending") @db.VarChar(20)
   errors        Json?    @default("[]")
   productId     String?  @map("product_id") @db.Uuid
-  colorwayId    String?  @map("colorway_id") @db.Uuid
+  variantId     String?  @map("variant_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
 
   @@index([importBatchId], name: "idx_ir_batch")
   @@map("import_rows")
-}
-
-model PricePublishLog {
-  id              String   @id @default(uuid()) @db.Uuid
-  publishJobId    String   @map("publish_job_id") @db.Uuid
-  marketPriceId   String   @map("market_price_id") @db.Uuid
-  shopifyStoreId  String   @map("shopify_store_id") @db.Uuid
-  action          String   @db.VarChar(20)
-  status          String   @db.VarChar(20)
-  requestPayload  Json?    @map("request_payload")
-  responsePayload Json?    @map("response_payload")
-  errorMessage    String?  @map("error_message")
-  publishedBy     String?  @map("published_by") @db.Uuid
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  marketPrice  MarketPrice  @relation(fields: [marketPriceId], references: [id])
-  shopifyStore ShopifyStore @relation(fields: [shopifyStoreId], references: [id])
-  publisher    User?        @relation(fields: [publishedBy], references: [id])
-
-  @@index([publishJobId], name: "idx_ppl_job")
-  @@index([marketPriceId], name: "idx_ppl_mp")
-  @@index([shopifyStoreId], name: "idx_ppl_store")
-  @@map("price_publish_logs")
 }
 
 model SyncLog {

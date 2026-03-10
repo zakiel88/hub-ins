@@ -65,7 +65,7 @@ export class OrdersService {
                 shopifyStore: { select: { storeName: true, shopifyDomain: true } },
                 lineItems: {
                     include: {
-                        colorway: {
+                        variant: {
                             include: {
                                 product: {
                                     include: {
@@ -117,7 +117,7 @@ export class OrdersService {
             totalPrice: number;
             currency: string;
             lineItems: Array<{
-                colorwayId?: string;
+                variantId?: string;
                 brandId?: string;
                 title: string;
                 sku?: string;
@@ -142,7 +142,7 @@ export class OrdersService {
                 lineItems: {
                     create: dto.lineItems.map((li) => ({
                         shopifyLineItemId: BigInt(Date.now() + Math.random() * 1000000),
-                        colorwayId: li.colorwayId || null,
+                        variantId: li.variantId || null,
                         brandId: li.brandId || null,
                         title: li.title,
                         sku: li.sku || null,

@@ -71,7 +71,7 @@ export class InventoryController {
     @Roles('admin', 'merchandising', 'sourcing')
     findAllInventory(
         @Query('warehouseId') warehouseId?: string,
-        @Query('colorwayId') colorwayId?: string,
+        @Query('variantId') variantId?: string,
         @Query('syncStatus') syncStatus?: string,
         @Query('search') search?: string,
         @Query('page') page?: string,
@@ -79,7 +79,7 @@ export class InventoryController {
     ) {
         return this.svc.findAllInventory({
             warehouseId,
-            colorwayId,
+            variantId,
             syncStatus,
             search,
             page: page ? +page : undefined,
@@ -96,7 +96,7 @@ export class InventoryController {
     @Post('inventory')
     @Roles('admin', 'merchandising')
     upsertInventory(
-        @Body() body: { colorwayId: string; warehouseId: string; quantityOnHand: number; quantityReserved?: number },
+        @Body() body: { variantId: string; warehouseId: string; quantityOnHand: number; quantityReserved?: number },
         @CurrentUser() user: any,
     ) {
         return this.svc.upsertInventory(body, user.sub);

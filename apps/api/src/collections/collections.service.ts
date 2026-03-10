@@ -64,7 +64,7 @@ export class CollectionsService {
                 products: {
                     orderBy: { createdAt: 'desc' },
                     include: {
-                        _count: { select: { colorways: true } },
+                        _count: { select: { variants: true } },
                     },
                 },
             },

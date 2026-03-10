@@ -16,7 +16,10 @@ const navSections = [
         title: 'Commerce',
         items: [
             { label: 'Brands', href: '/brands', icon: '🏷️' },
-            { label: 'Product Management', href: '/catalog', icon: '📦' },
+            { label: 'Products', href: '/products', icon: '📦' },
+            { label: 'Variant Groups', href: '/products/variant-groups', icon: '🎨' },
+            { label: 'SKUs', href: '/products/skus', icon: '🔧' },
+            { label: 'Import', href: '/products/import', icon: '📥' },
             { label: 'Pricing', href: '/pricing', icon: '💰' },
         ],
     },

@@ -82,27 +82,27 @@ export class InventoryService {
 
     async findAllInventory(query: {
         warehouseId?: string;
-        colorwayId?: string;
+        variantId?: string;
         syncStatus?: string;
         search?: string;
         page?: number;
         limit?: number;
     }) {
-        const { warehouseId, colorwayId, syncStatus, search, page = 1, limit = 50 } = query;
+        const { warehouseId, variantId, syncStatus, search, page = 1, limit = 50 } = query;
         const where: any = {};
 
         if (warehouseId) where.warehouseId = warehouseId;
-        if (colorwayId) where.colorwayId = colorwayId;
+        if (variantId) where.variantId = variantId;
         if (syncStatus) where.syncStatus = syncStatus;
         if (search) {
-            where.colorway = { sku: { contains: search, mode: 'insensitive' } };
+            where.variant = { sku: { contains: search, mode: 'insensitive' } };
         }
 
         const [data, total] = await Promise.all([
             this.prisma.inventoryItem.findMany({
                 where,
                 include: {
-                    colorway: {
+                    variant: {
                         include: {
                             product: {
                                 include: {
@@ -127,7 +127,7 @@ export class InventoryService {
         const item = await this.prisma.inventoryItem.findUnique({
             where: { id },
             include: {
-                colorway: {
+                variant: {
                     include: {
                         product: {
                             include: {
@@ -144,26 +144,26 @@ export class InventoryService {
     }
 
     async upsertInventory(
-        dto: { colorwayId: string; warehouseId: string; quantityOnHand: number; quantityReserved?: number },
+        dto: { variantId: string; warehouseId: string; quantityOnHand: number; quantityReserved?: number },
         userId: string,
     ) {
         // Validate refs
-        const [colorway, warehouse] = await Promise.all([
-            this.prisma.colorway.findUnique({ where: { id: dto.colorwayId } }),
+        const [variant, warehouse] = await Promise.all([
+            this.prisma.productVariant.findUnique({ where: { id: dto.variantId } }),
             this.prisma.warehouse.findUnique({ where: { id: dto.warehouseId } }),
         ]);
-        if (!colorway) throw new NotFoundException('Colorway not found');
+        if (!variant) throw new NotFoundException('Variant not found');
         if (!warehouse) throw new NotFoundException('Warehouse not found');
 
         const item = await this.prisma.inventoryItem.upsert({
             where: {
-                uq_inv_colorway_warehouse: {
-                    colorwayId: dto.colorwayId,
+                uq_inv_variant_warehouse: {
+                    variantId: dto.variantId,
                     warehouseId: dto.warehouseId,
                 },
             },
             create: {
-                colorwayId: dto.colorwayId,
+                variantId: dto.variantId,
                 warehouseId: dto.warehouseId,
                 quantityOnHand: dto.quantityOnHand,
                 quantityReserved: dto.quantityReserved ?? 0,
@@ -172,7 +172,7 @@ export class InventoryService {
                 quantityOnHand: dto.quantityOnHand,
                 quantityReserved: dto.quantityReserved,
             },
-            include: { colorway: true, warehouse: true },
+            include: { variant: true, warehouse: true },
         });
 
         this.audit.log({ userId, action: 'inventory.upsert', entityType: 'InventoryItem', entityId: item.id, changes: dto });
@@ -193,7 +193,7 @@ export class InventoryService {
         const updated = await this.prisma.inventoryItem.update({
             where: { id },
             data: { quantityOnHand: newQty },
-            include: { colorway: true, warehouse: true },
+            include: { variant: true, warehouse: true },
         });
 
         this.audit.log({

@@ -336,15 +336,15 @@ export class OrderSyncService {
     /** Sync line items for an order — upsert to avoid duplicates */
     private async syncLineItems(orderId: string, lineItems: any[]) {
         for (const li of lineItems) {
-            let colorwayId: string | null = null;
+            let variantId: string | null = null;
             let mappingStatus = 'UNMAPPED';
 
             if (li.sku) {
-                const colorway = await this.prisma.colorway.findUnique({
+                const foundVariant = await this.prisma.productVariant.findUnique({
                     where: { sku: li.sku },
                 });
-                if (colorway) {
-                    colorwayId = colorway.id;
+                if (foundVariant) {
+                    variantId = foundVariant.id;
                     mappingStatus = 'MAPPED';
                 }
             }
@@ -367,7 +367,7 @@ export class OrderSyncService {
                         quantity: li.quantity,
                         unitPrice: parseFloat(li.price),
                         totalPrice: parseFloat(li.price) * li.quantity,
-                        colorwayId,
+                        variantId,
                         mappingStatus,
                     },
                 });
@@ -383,7 +383,7 @@ export class OrderSyncService {
                         quantity: li.quantity,
                         unitPrice: parseFloat(li.price),
                         totalPrice: parseFloat(li.price) * li.quantity,
-                        colorwayId,
+                        variantId,
                         mappingStatus,
                         itemState: 'PENDING',
                     },

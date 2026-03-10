@@ -287,7 +287,7 @@ export class ShopifyStoresService {
                     _count: {
                         select: {
                             orders: true,
-                            shopifyProductMappings: true,
+                            shopifyProductMaps: true,
                             syncLogs: true,
                         },
                     },
@@ -317,7 +317,7 @@ export class ShopifyStoresService {
                 _count: {
                     select: {
                         orders: true,
-                        shopifyProductMappings: true,
+                        shopifyProductMaps: true,
                         syncLogs: true,
                         inventoryItems: true,
                         webhookEvents: true,
@@ -383,21 +383,21 @@ export class ShopifyStoresService {
             where: { id },
             include: {
                 _count: {
-                    select: { orders: true, shopifyProductMappings: true },
+                    select: { orders: true, shopifyProductMaps: true },
                 },
             },
         });
         if (!existing) throw new NotFoundException('Store not found');
 
-        if (existing._count.orders > 0 || existing._count.shopifyProductMappings > 0) {
+        if (existing._count.orders > 0 || existing._count.shopifyProductMaps > 0) {
             throw new BadRequestException(
-                `Cannot delete store with ${existing._count.orders} orders and ${existing._count.shopifyProductMappings} product mappings. Deactivate it instead.`,
+                `Cannot delete store with ${existing._count.orders} orders and ${existing._count.shopifyProductMaps} product maps. Deactivate it instead.`,
             );
         }
 
         await this.prisma.syncLog.deleteMany({ where: { shopifyStoreId: id } });
         await this.prisma.webhookEvent.deleteMany({ where: { shopifyStoreId: id } });
-        await this.prisma.pricePublishLog.deleteMany({ where: { shopifyStoreId: id } });
+        await // pricePublishLog removed in schema v3.1
         await this.prisma.shopifyStore.delete({ where: { id } });
 
         await this.audit.log({

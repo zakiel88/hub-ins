@@ -180,7 +180,7 @@ export class ShopifySyncService {
         let hasConflict = false;
 
         if (skus.length > 0) {
-            const existingVariant = await this.prisma.colorway.findFirst({
+            const existingVariant = await this.prisma.productVariant.findFirst({
                 where: { sku: { in: skus } },
                 include: {
                     product: { select: { id: true, brandId: true } },
@@ -220,11 +220,6 @@ export class ShopifySyncService {
                     data: {
                         description: shopifyProduct.body_html || undefined,
                         productType: shopifyProduct.product_type || undefined,
-                        tags: shopifyProduct.tags ? shopifyProduct.tags.split(',').map((t: string) => t.trim()) : [],
-                        media: productMedia.length > 0 ? productMedia : undefined,
-                        handle: shopifyProduct.handle || undefined,
-                        vendor: shopifyProduct.vendor || undefined,
-                        hasConflict,
                         ...(brandId && !hasConflict ? { brandId } : {}),
                     },
                 });
@@ -232,23 +227,18 @@ export class ShopifySyncService {
             if (hasConflict) {
                 await this.prisma.product.update({
                     where: { id: masterProductId },
-                    data: { hasConflict: true },
+                    data: { status: "DRAFT" },
                 });
             }
         } else {
             // Create new MasterProduct
             const newProduct = await this.prisma.product.create({
                 data: {
-                    name: shopifyProduct.title,
+                    title: shopifyProduct.title,
                     description: shopifyProduct.body_html || null,
                     productType: shopifyProduct.product_type || null,
-                    tags: shopifyProduct.tags ? shopifyProduct.tags.split(',').map((t: string) => t.trim()) : [],
-                    media: productMedia,
-                    handle: shopifyProduct.handle || null,
-                    vendor: shopifyProduct.vendor || null,
                     brandId: brandId || null,
-                    hasConflict: false,
-                    status: 'active',
+                    status: 'ACTIVE',
                 },
             });
             masterProductId = newProduct.id;
@@ -272,7 +262,7 @@ export class ShopifySyncService {
                 imageUrl: variant.image_id ? images.find((img: any) => img.id === variant.image_id)?.src || null : null,
             };
 
-            const colorway = await this.prisma.colorway.upsert({
+            const colorway = await this.prisma.productVariant.upsert({
                 where: { sku: variant.sku },
                 update: colorwayData,
                 create: { sku: variant.sku, ...colorwayData },
@@ -287,61 +277,21 @@ export class ShopifySyncService {
                     },
                 },
                 update: {
-                    colorwayId: colorway.id,
+                    variantId: colorway.id,
                     inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
                     syncedAt: new Date(),
                 },
                 create: {
                     storeId,
-                    colorwayId: colorway.id,
+                    variantId: colorway.id,
                     shopifyVariantId: BigInt(variant.id),
                     inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
                     syncedAt: new Date(),
                 },
             });
 
-            // 7. Create/update VariantPublication
-            // First ensure ProductPublication exists
-            const pub = await this.prisma.productPublication.upsert({
-                where: {
-                    uq_pub_store_product: { storeId, productId: masterProductId },
-                },
-                update: {
-                    storeTitle: shopifyProduct.title,
-                    storeDescription: shopifyProduct.body_html || null,
-                    storeStatus: shopifyProduct.status || 'active',
-                    handle: shopifyProduct.handle || null,
-                    shopifyProductId: BigInt(shopifyProduct.id),
-                },
-                create: {
-                    storeId,
-                    productId: masterProductId,
-                    storeTitle: shopifyProduct.title,
-                    storeDescription: shopifyProduct.body_html || null,
-                    storeStatus: shopifyProduct.status || 'active',
-                    handle: shopifyProduct.handle || null,
-                    shopifyProductId: BigInt(shopifyProduct.id),
-                },
-            });
-
-            await this.prisma.variantPublication.upsert({
-                where: {
-                    uq_vpub_store_variant: { storeId, colorwayId: colorway.id },
-                },
-                update: {
-                    priceOverride: variant.price ? parseFloat(variant.price) : null,
-                    shopifyVariantId: BigInt(variant.id),
-                    status: 'active',
-                },
-                create: {
-                    publicationId: pub.id,
-                    storeId,
-                    colorwayId: colorway.id,
-                    priceOverride: variant.price ? parseFloat(variant.price) : null,
-                    shopifyVariantId: BigInt(variant.id),
-                    status: 'active',
-                },
-            });
+            // 7. ProductPublication/VariantPublication removed in v3.1
+            // ShopifyProductMap (step 8) now handles the store↔product mapping
         }
 
         // 8. Create/update ShopifyProductMap
@@ -425,7 +375,7 @@ export class ShopifySyncService {
             const variantMaps = await this.prisma.shopifyVariantMap.findMany({
                 where: { storeId },
                 include: {
-                    colorway: { select: { id: true, productId: true } },
+                    variant: { select: { id: true, productId: true } },
                 },
             });
 
@@ -456,7 +406,7 @@ export class ShopifySyncService {
             // Write variant metafields
             for (const vm of variantMaps) {
                 try {
-                    await this.writeVariantMetafield(domain, token, apiVersion, vm.shopifyVariantId, vm.colorway.id);
+                    await this.writeVariantMetafield(domain, token, apiVersion, vm.shopifyVariantId, vm.variantId);
                     processed++;
                 } catch (err: any) {
                     failed++;

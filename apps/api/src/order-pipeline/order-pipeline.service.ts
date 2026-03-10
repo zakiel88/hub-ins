@@ -165,9 +165,9 @@ export class OrderPipelineService {
         const stockInfo: Record<string, { available: number; onHand: number; reserved: number }> = {};
 
         for (const item of items) {
-            if (item.colorwayId) {
+            if (item.variantId) {
                 const invItems = await this.prisma.inventoryItem.findMany({
-                    where: { colorwayId: item.colorwayId },
+                    where: { variantId: item.variantId },
                 });
                 const onHand = invItems.reduce((s, i) => s + i.quantityOnHand, 0);
                 const reserved = invItems.reduce((s, i) => s + i.quantityReserved, 0);

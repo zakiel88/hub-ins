@@ -290,10 +290,10 @@ export class MetafieldsService {
         const products = productIds.length > 0
             ? await this.prisma.product.findMany({
                 where: { id: { in: productIds } },
-                select: { id: true, name: true },
+                select: { id: true, title: true },
             })
             : [];
-        const productMap = new Map(products.map(p => [p.id, p.name]));
+        const productMap = new Map(products.map(p => [p.id, p.title]));
 
         const enriched = data.map(v => ({
             ...v,
@@ -533,17 +533,17 @@ export class MetafieldsService {
     }> {
         const product = await this.prisma.product.findUnique({
             where: { id: productId },
-            select: { shopifyCategoryId: true, id: true },
+            select: { id: true, storeMaps: { select: { shopifyCategoryId: true }, take: 1 } },
         });
 
-        if (!product || !product.shopifyCategoryId) {
+        if (!product || !(product as any).storeMaps?.[0]?.shopifyCategoryId) {
             return { valid: true, missing: [] }; // No category = no required metafields
         }
 
         // Get required definitions for this category
         const requiredSchemas = await this.prisma.catalogMetafieldSchema.findMany({
             where: {
-                shopifyCategoryId: product.shopifyCategoryId,
+                shopifyCategoryId: (product as any).storeMaps?.[0]?.shopifyCategoryId,
                 isRequired: true,
             },
             include: { definition: true },
@@ -733,7 +733,7 @@ export class MetafieldsService {
 
                 const productMaps = await this.prisma.shopifyProductMap.findMany({
                     where: { storeId: store.id },
-                    include: { product: { select: { id: true, name: true } } },
+                    include: { product: { select: { id: true, title: true } } },
                 });
 
                 this.logger.log(`Syncing values for ${productMaps.length} products from ${store.storeName}`);
@@ -819,7 +819,7 @@ export class MetafieldsService {
                                     totalCreated++;
                                 }
                             } catch (err: any) {
-                                sr.errors.push(`${mf.namespace}.${mf.key} → ${pm.product.name}: ${err.message}`);
+                                sr.errors.push(`${mf.namespace}.${mf.key} → ${(pm as any).product?.title || pm.productId}: ${err.message}`);
                             }
                         }
 

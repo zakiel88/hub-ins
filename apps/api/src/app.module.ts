@@ -6,9 +6,6 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { BrandsModule } from './brands/brands.module';
 import { CollectionsModule } from './collections/collections.module';
-import { ProductsModule } from './products/products.module';
-import { ColorwaysModule } from './colorways/colorways.module';
-import { PricingModule } from './pricing/pricing.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { OrdersModule } from './orders/orders.module';
 import { ShopifyStoresModule } from './shopify-stores/shopify-stores.module';
@@ -22,6 +19,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { ShopifySyncModule } from './shopify-sync/shopify-sync.module';
 import { JobsModule } from './jobs/jobs.module';
 import { MetafieldsModule } from './metafields/metafields.module';
+import { ProductsV2Module } from './products-v2/products.module';
 import { JwtAuthGuard } from './auth/guards';
 import { RolesGuard } from './auth/guards';
 import { getConfig } from './config/configuration';
@@ -64,9 +62,6 @@ import { getConfig } from './config/configuration';
         HealthModule,
         BrandsModule,
         CollectionsModule,
-        ProductsModule,
-        ColorwaysModule,
-        PricingModule,
         InventoryModule,
         OrdersModule,
         ShopifyStoresModule,
@@ -79,6 +74,7 @@ import { getConfig } from './config/configuration';
         ShopifySyncModule,
         JobsModule,
         MetafieldsModule,
+        ProductsV2Module,
     ],
     providers: [
         // Global JWT guard — all routes require auth unless @Public()

@@ -26,10 +26,10 @@ export default function DashboardPage() {
     useEffect(() => {
         const load = async () => {
             try {
-                const [brands, products, colorways, pricing, pipeRes] = await Promise.all([
+                const [brands, products, variants, pricing, pipeRes] = await Promise.all([
                     api.getBrands().catch(() => ({ data: [], meta: { total: 0 } })),
                     api.getProducts().catch(() => ({ data: [], meta: { total: 0 } })),
-                    api.getColorways().catch(() => ({ data: [], meta: { total: 0 } })),
+                    api.getVariants().catch(() => ({ data: [], meta: { total: 0 } })),
                     api.getPricing().catch(() => ({ data: [], meta: { total: 0 } })),
                     api.getPipelineSummary().catch(() => ({ data: { total: 0, byState: {} } })),
 
@@ -37,7 +37,7 @@ export default function DashboardPage() {
                 setStats({
                     brands: brands.meta?.total ?? brands.data?.length ?? 0,
                     products: products.meta?.total ?? products.data?.length ?? 0,
-                    colorways: colorways.meta?.total ?? colorways.data?.length ?? 0,
+                    variants: variants.meta?.total ?? variants.data?.length ?? 0,
                     prices: pricing.meta?.total ?? pricing.data?.length ?? 0,
                 });
                 setPipeline(pipeRes.data);
@@ -80,8 +80,8 @@ export default function DashboardPage() {
                             </div>
                             <div className="stat-card stat-accent-3">
                                 <div className="stat-label">SKUs</div>
-                                <div className="stat-value">{stats?.colorways ?? 0}</div>
-                                <div className="stat-change positive">colorways</div>
+                                <div className="stat-value">{stats?.variants ?? 0}</div>
+                                <div className="stat-change positive">variants</div>
                             </div>
                             <div className="stat-card stat-accent-4">
                                 <div className="stat-label">Giá</div>
@@ -141,9 +141,9 @@ export default function DashboardPage() {
                                             <span className="qa-icon">📋</span>
                                             <span className="qa-label">Tồn kho</span>
                                         </a>
-                                        <a href="/catalog" className="quick-action-item">
+                                        <a href="/products" className="quick-action-item">
                                             <span className="qa-icon">📦</span>
-                                            <span className="qa-label">Catalog</span>
+                                            <span className="qa-label">Products</span>
                                         </a>
                                     </div>
                                 </div>

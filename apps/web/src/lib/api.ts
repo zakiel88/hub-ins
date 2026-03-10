@@ -26,8 +26,9 @@ class ApiClient {
     }
 
     private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+        const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
         const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
+            ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
             ...(options.headers as Record<string, string> || {}),
         };
 
@@ -173,20 +174,18 @@ class ApiClient {
         });
     }
 
-    // Products
+    // Products v2
     async getProducts(params?: Record<string, string>) {
         const qs = params ? '?' + new URLSearchParams(params).toString() : '';
         return this.request<{ data: any[]; meta: any }>(`/api/v1/products${qs}`);
     }
 
-    async getProduct(id: string) {
-        return this.request<{ data: any }>(`/api/v1/products/${id}`);
+    async getProductsSummary() {
+        return this.request<any>(`/api/v1/products/summary`);
     }
 
-    async createProduct(collectionId: string, data: any) {
-        return this.request<{ data: any }>(`/api/v1/collections/${collectionId}/products`, {
-            method: 'POST', body: JSON.stringify(data),
-        });
+    async getProduct(id: string) {
+        return this.request<{ data: any }>(`/api/v1/products/${id}`);
     }
 
     async updateProduct(id: string, data: any) {
@@ -195,32 +194,155 @@ class ApiClient {
         });
     }
 
-    async deleteProduct(id: string) {
-        return this.request(`/api/v1/products/${id}`, { method: 'DELETE' });
+    async archiveProduct(id: string) {
+        return this.request<{ data: any }>(`/api/v1/products/${id}/archive`, {
+            method: 'PATCH',
+        });
     }
 
-    async getProductsSummary() {
-        return this.request<any>(`/api/v1/products/summary`);
-    }
-
-    async getProductConflicts(params?: Record<string, string>) {
+    // Product Variants
+    async getProductVariants(productId: string, params?: Record<string, string>) {
         const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-        return this.request<{ data: any[]; meta: any }>(`/api/v1/products${qs}&hasConflict=true`);
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/products/${productId}/variants${qs}`);
     }
 
-    // Colorways
-    async getColorways(params?: Record<string, string>) {
+    async updateVariant(productId: string, variantId: string, data: any) {
+        return this.request<{ data: any }>(`/api/v1/products/${productId}/variants/${variantId}`, {
+            method: 'PUT', body: JSON.stringify(data),
+        });
+    }
+
+    async bulkUpdateVariants(productId: string, updates: any[]) {
+        return this.request<{ data: any[]; updated: number }>(`/api/v1/products/${productId}/variants/bulk`, {
+            method: 'PATCH', body: JSON.stringify({ updates }),
+        });
+    }
+
+    async getVariants(params?: Record<string, string>) {
         const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-        return this.request<{ data: any[]; meta: any }>(`/api/v1/colorways${qs}`);
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/product-variants${qs}`);
     }
 
-    async getColorway(id: string) {
-        return this.request<{ data: any }>(`/api/v1/colorways/${id}`);
+    async getVariantBySku(sku: string) {
+        return this.request<{ data: any }>(`/api/v1/product-variants/by-sku/${encodeURIComponent(sku)}`);
     }
 
-    async createColorway(productId: string, data: any) {
-        return this.request<{ data: any }>(`/api/v1/products/${productId}/colorways`, {
-            method: 'POST', body: JSON.stringify(data),
+    // Sync Jobs
+    async getSyncJobs(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/products/sync-jobs${qs}`);
+    }
+
+    async getSyncJob(id: string) {
+        return this.request<{ data: any }>(`/api/v1/products/sync-jobs/${id}`);
+    }
+
+    // Product Issues
+    async getProductIssues(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/products/issues${qs}`);
+    }
+
+    async resolveIssue(id: string) {
+        return this.request<{ data: any }>(`/api/v1/products/issues/${id}/resolve`, { method: 'PATCH' });
+    }
+
+    async ignoreIssue(id: string) {
+        return this.request<{ data: any }>(`/api/v1/products/issues/${id}/ignore`, { method: 'PATCH' });
+    }
+
+    async runAllRules() {
+        return this.request<any>(`/api/v1/products/rules/run-all`, { method: 'PATCH' });
+    }
+
+    // Intake Import
+    async previewIntake(file: File) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.request<any>(`/api/v1/products/import/preview`, {
+            method: 'POST',
+            body: formData,
+            headers: {}, // let browser set Content-Type with boundary
+        });
+    }
+
+    async commitIntake(file: File) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.request<any>(`/api/v1/products/import/commit`, {
+            method: 'POST',
+            body: formData,
+            headers: {},
+        });
+    }
+
+    // Global Bulk Variant Operations
+    async globalBulkUpdateVariants(action: string, variantIds: string[], data?: any) {
+        return this.request<any>(`/api/v1/product-variants/bulk`, {
+            method: 'PATCH',
+            body: JSON.stringify({ action, variantIds, data }),
+        });
+    }
+
+
+    // Variant Groups
+    async getVariantGroups(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/variant-groups${qs}`);
+    }
+
+    // Manual Create
+    async getNextStyleCode(brandId?: string) {
+        const qs = brandId ? `?brandId=${brandId}` : '';
+        return this.request<{ data: { styleCode: string; prefix: string; sequence: number } }>(`/api/v1/products/next-style-code${qs}`);
+    }
+
+    async createProduct(data: any) {
+        return this.request<{ data: any }>('/api/v1/products', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async createSku(productId: string, data: any) {
+        return this.request<{ data: any }>(`/api/v1/products/${productId}/skus`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async createVariantGroup(productId: string, data: any) {
+        return this.request<{ data: any }>(`/api/v1/products/${productId}/variant-groups`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async addSizeToGroup(groupId: string, data: any) {
+        return this.request<{ data: any }>(`/api/v1/variant-groups/${groupId}/sizes`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async removeSizeFromGroup(groupId: string, size: string) {
+        return this.request<{ data: any }>(`/api/v1/variant-groups/${groupId}/sizes/${encodeURIComponent(size)}`, {
+            method: 'DELETE',
+        });
+    }
+
+    // Shopify Draft Listing
+    async listToShopify(productId: string, storeId: string) {
+        return this.request<any>(`/api/v1/products/${productId}/list-to-shopify`, {
+            method: 'POST',
+            body: JSON.stringify({ storeId }),
+        });
+    }
+
+    async bulkListToShopify(productIds: string[], storeId: string) {
+        return this.request<any>(`/api/v1/products/list-to-shopify/bulk`, {
+            method: 'POST',
+            body: JSON.stringify({ productIds, storeId }),
         });
     }
 
