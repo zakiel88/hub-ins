@@ -43,6 +43,24 @@ export class ProductsV2Controller {
         try { results.syncJobCount = await prisma.productSyncJob.count(); } catch (e: any) { results.syncJobCountError = e.message?.substring(0, 200); }
         try { results.issueCount = await prisma.productIssue.count(); } catch (e: any) { results.issueCountError = e.message?.substring(0, 200); }
         try { results.imageCount = await prisma.productImage.count(); } catch (e: any) { results.imageCountError = e.message?.substring(0, 200); }
+        // Check product table columns
+        try {
+            const cols = await prisma.$queryRawUnsafe("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'products' ORDER BY ordinal_position");
+            results.productColumns = cols;
+        } catch (e: any) { results.productColumnsError = e.message?.substring(0, 200); }
+        // Try a simple findMany
+        try {
+            const data = await prisma.product.findMany({ take: 1 });
+            results.findManyResult = data;
+        } catch (e: any) { results.findManyError = e.message?.substring(0, 300); }
+        // Try findMany with includes
+        try {
+            const data = await prisma.product.findMany({
+                take: 1,
+                include: { brand: true, _count: { select: { variants: true, issues: true } } },
+            });
+            results.findManyWithIncludeResult = data;
+        } catch (e: any) { results.findManyWithIncludeError = e.message?.substring(0, 300); }
         return { data: results };
     }
 

@@ -1,30 +1,30 @@
-// Quick production diagnostic
+// Test: check product table columns and try specific queries
 (async () => {
     const BASE = 'https://api.inecso.com';
-    // Login
     const lr = await fetch(`${BASE}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'admin@ins.vn', password: 'Admin123' }),
     });
-    if (!lr.ok) { console.log('API down - login failed:', lr.status); return; }
     const ld = await lr.json();
-    if (!ld.data?.token) { console.log('No token'); return; }
-    const token = ld.data.token;
+    const token = ld.data?.token;
 
-    // Check debug endpoint
+    // Check product table columns via debug
     const dr = await fetch(`${BASE}/api/v1/products/debug`, {
         headers: { 'Authorization': `Bearer ${token}` },
     });
-    console.log('Debug:', dr.status);
-    if (dr.ok) {
-        const body = await dr.json();
-        console.log(JSON.stringify(body, null, 2));
-    } else {
-        console.log('Debug response:', await dr.text());
-    }
+    console.log('Debug full:', await dr.text());
 
-    // Also check health for timestamp
-    const hr = await fetch(`${BASE}/api/v1/health`);
-    console.log('\nHealth:', await hr.json());
+    // Try creating a test product to see what error we get
+    console.log('\n=== Trying to create a product ===');
+    const cr = await fetch(`${BASE}/api/v1/products`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            title: 'Test Product Debug',
+            styleCode: 'TST-001',
+        }),
+    });
+    console.log('Create product:', cr.status);
+    console.log(await cr.text());
 })();
