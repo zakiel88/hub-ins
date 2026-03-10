@@ -90,6 +90,7 @@ export default function ProductsPage() {
                     clearInterval(poll);
                     setSyncing(false);
                     setSyncStatus({ message: '❌ Lost connection to sync job', type: 'error' });
+                    setTimeout(() => setSyncStatus(null), 5000);
                 }
             }, 3000);
         } catch (e: any) {
