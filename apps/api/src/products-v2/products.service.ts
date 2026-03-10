@@ -88,7 +88,7 @@ export class ProductsV2Service {
         try { total = await this.prisma.product.count(); } catch (e: any) { console.warn('summary:total', e.message?.substring(0, 100)); }
 
         try {
-            byStatus = await this.prisma.product.groupBy({ by: ['status'], _count: true });
+            byStatus = await this.prisma.product.groupBy({ by: ['status'], _count: true } as any);
         } catch (e: any) {
             console.warn('summary:groupBy', e.message?.substring(0, 100));
             // Fallback: count by raw SQL
