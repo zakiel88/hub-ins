@@ -88,16 +88,12 @@ export class ProductsV2Service {
         try { total = await this.prisma.product.count(); } catch (e: any) { console.warn('summary:total', e.message?.substring(0, 100)); }
 
         try {
-            byStatus = await this.prisma.product.groupBy({ by: ['status'], _count: true } as any);
+            const rows = await this.prisma.$queryRawUnsafe<{ status: string; cnt: string }[]>(
+                "SELECT status::text, COUNT(*)::text as cnt FROM products GROUP BY status"
+            );
+            byStatus = rows.map(r => ({ status: r.status, _count: Number(r.cnt) }));
         } catch (e: any) {
             console.warn('summary:groupBy', e.message?.substring(0, 100));
-            // Fallback: count by raw SQL
-            try {
-                const rows = await this.prisma.$queryRawUnsafe<{ status: string; cnt: bigint }[]>(
-                    "SELECT status::text, COUNT(*)::bigint as cnt FROM products GROUP BY status"
-                );
-                byStatus = rows.map(r => ({ status: r.status, _count: Number(r.cnt) }));
-            } catch { /* ignore */ }
         }
 
         try {
