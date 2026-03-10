@@ -30,6 +30,44 @@ export class ProductsV2Controller {
     ) { }
 
     // ═══════════════════════════════════════
+    //  Diagnostic (TEMP — remove after debugging)
+    // ═══════════════════════════════════════
+
+    @Get('products/debug')
+    async debug() {
+        const results: Record<string, any> = {};
+        try {
+            results.productCount = await this.products['prisma'].product.count();
+        } catch (e: any) {
+            results.productCountError = e.message;
+        }
+        try {
+            results.variantCount = await this.products['prisma'].productVariant.count();
+        } catch (e: any) {
+            results.variantCountError = e.message;
+        }
+        try {
+            results.variantGroupCount = await this.products['prisma'].variantGroup.count();
+        } catch (e: any) {
+            results.variantGroupCountError = e.message;
+        }
+        try {
+            const first = await this.products['prisma'].product.findFirst({
+                include: { brand: true, _count: { select: { variants: true, issues: true } } },
+            });
+            results.firstProduct = first ? { id: first.id, title: first.title } : null;
+        } catch (e: any) {
+            results.firstProductError = e.message;
+        }
+        try {
+            results.syncJobCount = await this.products['prisma'].productSyncJob.count();
+        } catch (e: any) {
+            results.syncJobCountError = e.message;
+        }
+        return { data: results };
+    }
+
+    // ═══════════════════════════════════════
     //  Products Core
     // ═══════════════════════════════════════
 
