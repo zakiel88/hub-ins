@@ -136,6 +136,15 @@ export class ProductsV2Controller {
                 shopify_sku VARCHAR(100), raw_snapshot JSONB, synced_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT uq_svmap_store_variant UNIQUE (store_id, shopify_variant_id))`,
+            // If table existed from old schema, add missing columns
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS variant_id UUID REFERENCES product_variants(id)`,
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES shopify_stores(id)`,
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS shopify_variant_id BIGINT`,
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS inventory_item_id BIGINT`,
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS shopify_sku VARCHAR(100)`,
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS raw_snapshot JSONB`,
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS synced_at TIMESTAMPTZ`,
+            `ALTER TABLE shopify_variant_maps ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()`,
             `CREATE INDEX IF NOT EXISTS idx_svmap_variant ON shopify_variant_maps(variant_id)`,
             `CREATE INDEX IF NOT EXISTS idx_svmap_sku ON shopify_variant_maps(shopify_sku)`,
             `CREATE TABLE IF NOT EXISTS product_sync_jobs (
