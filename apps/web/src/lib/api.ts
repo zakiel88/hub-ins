@@ -255,6 +255,20 @@ class ApiClient {
         return this.request<any>(`/api/v1/products/rules/run-all`, { method: 'PATCH' });
     }
 
+    // Shopify Stores & Sync
+    async getShopifyStores(params?: Record<string, string>) {
+        const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+        return this.request<{ data: any[]; meta: any }>(`/api/v1/shopify-stores${qs}`);
+    }
+
+    async syncProductsFromStore(storeId: string) {
+        return this.request<{ data: { jobId: string }; message: string }>(`/api/v1/sync/import/${storeId}`, { method: 'POST' });
+    }
+
+    async getSyncJobStatus(jobId: string) {
+        return this.request<{ data: any }>(`/api/v1/products/sync-jobs/${jobId}`);
+    }
+
     // Intake Import
     async previewIntake(file: File) {
         const formData = new FormData();

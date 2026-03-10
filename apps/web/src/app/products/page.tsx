@@ -46,10 +46,58 @@ export default function ProductsPage() {
     const [sortDir, setSortDir] = useState('desc');
     const limit = 25;
 
+    // Sync state
+    const [stores, setStores] = useState<any[]>([]);
+    const [showSyncDropdown, setShowSyncDropdown] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+    const [syncStatus, setSyncStatus] = useState<{ message: string; type: 'info' | 'success' | 'error' } | null>(null);
+
     useEffect(() => {
         api.getBrands().then(res => setBrands(res.data || [])).catch(() => { });
         api.getProductsSummary().then(res => setSummary(res.data)).catch(() => { });
+        api.getShopifyStores({ isActive: 'true' }).then(res => setStores(res.data || [])).catch(() => { });
     }, []);
+
+    // Sync handler
+    const handleSync = async (storeId: string, storeName: string) => {
+        setShowSyncDropdown(false);
+        setSyncing(true);
+        setSyncStatus({ message: `Syncing from ${storeName}...`, type: 'info' });
+        try {
+            const res = await api.syncProductsFromStore(storeId);
+            const jobId = res.data.jobId;
+            // Poll job status every 3s
+            const poll = setInterval(async () => {
+                try {
+                    const job = await api.getSyncJobStatus(jobId);
+                    const j = job.data;
+                    if (j.status === 'success') {
+                        clearInterval(poll);
+                        setSyncing(false);
+                        setSyncStatus({ message: `✅ Synced ${j.processed} products from ${storeName}`, type: 'success' });
+                        fetchData();
+                        api.getProductsSummary().then(res => setSummary(res.data)).catch(() => { });
+                        setTimeout(() => setSyncStatus(null), 8000);
+                    } else if (j.status === 'failed') {
+                        clearInterval(poll);
+                        setSyncing(false);
+                        setSyncStatus({ message: `❌ Sync failed: ${j.errorMsg || 'Unknown error'}`, type: 'error' });
+                        setTimeout(() => setSyncStatus(null), 10000);
+                    } else {
+                        setSyncStatus({ message: `Syncing from ${storeName}... ${j.processed || 0}/${j.totalItems || '?'} products`, type: 'info' });
+                    }
+                } catch {
+                    clearInterval(poll);
+                    setSyncing(false);
+                    setSyncStatus({ message: '❌ Lost connection to sync job', type: 'error' });
+                }
+            }, 3000);
+        } catch (e: any) {
+            setSyncing(false);
+            setSyncStatus({ message: `❌ ${e.message || 'Failed to start sync'}`, type: 'error' });
+            setTimeout(() => setSyncStatus(null), 8000);
+        }
+    };
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -85,9 +133,23 @@ export default function ProductsPage() {
                 .products-page select:focus { border-color: #6366f1; outline: none; box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
                 .sort-btn { background: none; border: none; color: #888; cursor: pointer; font-size: 11px; padding: 0 2px; }
                 .sort-btn.active { color: #6366f1; }
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
             `}</style>
             <div className="products-page" style={{ padding: 32, maxWidth: 1400 }}>
-                {/* Header */}
+                {/* Sync Status Banner */}
+                {syncStatus && (
+                    <div style={{
+                        padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 500,
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        background: syncStatus.type === 'success' ? 'rgba(34,197,94,0.1)' : syncStatus.type === 'error' ? 'rgba(239,68,68,0.1)' : 'rgba(99,102,241,0.1)',
+                        border: `1px solid ${syncStatus.type === 'success' ? 'rgba(34,197,94,0.3)' : syncStatus.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(99,102,241,0.3)'}`,
+                        color: syncStatus.type === 'success' ? '#22c55e' : syncStatus.type === 'error' ? '#ef4444' : '#818cf8',
+                    }}>
+                        {syncing && <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>}
+                        {syncStatus.message}
+                        <button onClick={() => setSyncStatus(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}>×</button>
+                    </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
                     <div>
                         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#fff', margin: 0 }}>
@@ -97,7 +159,60 @@ export default function ProductsPage() {
                             Master product catalog — manage products, variants, and pricing
                         </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {/* Sync Button */}
+                        <div style={{ position: 'relative' }}>
+                            <button
+                                onClick={() => setShowSyncDropdown(!showSyncDropdown)}
+                                disabled={syncing}
+                                style={{
+                                    padding: '8px 16px', background: syncing ? 'rgba(34,197,94,0.2)' : 'rgba(34,197,94,0.1)',
+                                    border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8,
+                                    color: '#22c55e', fontSize: 13, fontWeight: 600, cursor: syncing ? 'wait' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                }}
+                            >
+                                {syncing ? (
+                                    <><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite', fontSize: 14 }}>⟳</span> Syncing...</>
+                                ) : (
+                                    <>🔄 Sync from Shopify</>
+                                )}
+                            </button>
+                            {showSyncDropdown && stores.length > 0 && (
+                                <div style={{
+                                    position: 'absolute', top: '100%', right: 0, marginTop: 4, minWidth: 260,
+                                    background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10,
+                                    boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 50, overflow: 'hidden',
+                                }}>
+                                    <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#888', fontSize: 11, fontWeight: 600, letterSpacing: '0.5px' }}>
+                                        SELECT STORE TO SYNC
+                                    </div>
+                                    {stores.map((store: any) => (
+                                        <button key={store.id} onClick={() => handleSync(store.id, store.storeName)} style={{
+                                            width: '100%', padding: '10px 14px', background: 'transparent', border: 'none',
+                                            color: '#e0e0f0', fontSize: 13, cursor: 'pointer', textAlign: 'left',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        }}
+                                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.1)')}
+                                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                        >
+                                            <div>
+                                                <div style={{ fontWeight: 600 }}>🏪 {store.storeName}</div>
+                                                <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{store.shopifyDomain}</div>
+                                            </div>
+                                            <span style={{ color: store.isActive ? '#22c55e' : '#666', fontSize: 11 }}>
+                                                {store.market || 'Global'}
+                                            </span>
+                                        </button>
+                                    ))}
+                                    <button onClick={() => setShowSyncDropdown(false)} style={{
+                                        width: '100%', padding: '8px 14px', background: 'rgba(255,255,255,0.03)',
+                                        border: 'none', borderTop: '1px solid rgba(255,255,255,0.06)',
+                                        color: '#666', fontSize: 12, cursor: 'pointer',
+                                    }}>Cancel</button>
+                                </div>
+                            )}
+                        </div>
                         <Link href="/products/new" style={{
                             padding: '8px 16px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)',
                             borderRadius: 8, color: '#818cf8', textDecoration: 'none', fontSize: 13, fontWeight: 600,
