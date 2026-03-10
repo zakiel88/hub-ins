@@ -1,4 +1,4 @@
-// Test individual summary queries to find which one fails
+// Full test: run migration then test all endpoints
 (async () => {
     const BASE = 'https://api.inecso.com';
     const lr = await fetch(`${BASE}/api/v1/auth/login`, {
@@ -9,40 +9,32 @@
     const ld = await lr.json();
     const token = ld.data?.token;
     if (!token) { console.log('Login failed'); return; }
+    console.log('✅ Logged in\n');
 
-    // Test the debug endpoint which has findMany
-    const dr = await fetch(`${BASE}/api/v1/products/debug`, {
+    // Run migration (includes enum type conversions if new code deployed)
+    console.log('🔧 Running migration...');
+    const mr = await fetch(`${BASE}/api/v1/products/run-migration`, {
+        method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
     });
-    console.log('Debug:', dr.status, await dr.text());
+    const mb = await mr.json();
+    console.log(`Migration: ${mb.data.ok}/${mb.data.total} OK, ${mb.data.fail} failed`);
+    if (mb.data.errors?.length) console.log('Errors:', mb.data.errors);
 
-    // Test products (OK)
-    const pr = await fetch(`${BASE}/api/v1/products?page=1&limit=1`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-    });
-    console.log('\nProducts:', pr.status);
-
-    // Test summary
-    const sr = await fetch(`${BASE}/api/v1/products/summary`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-    });
-    console.log('Summary:', sr.status, await sr.text());
-
-    // Test variants
-    const vr = await fetch(`${BASE}/api/v1/product-variants?page=1&limit=1`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-    });
-    console.log('Variants:', vr.status, await vr.text());
-
-    // Test sync-jobs (should be OK)
-    const jr = await fetch(`${BASE}/api/v1/products/sync-jobs?page=1&limit=1`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-    });
-    console.log('SyncJobs:', jr.status);
-
-    // Test issues (should be OK)
-    const ir = await fetch(`${BASE}/api/v1/products/issues?page=1&limit=1`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-    });
-    console.log('Issues:', ir.status);
+    // Test ALL endpoints
+    const tests = [
+        ['Products', '/api/v1/products?page=1&limit=1'],
+        ['Summary', '/api/v1/products/summary'],
+        ['Variants', '/api/v1/product-variants?page=1&limit=1'],
+        ['SyncJobs', '/api/v1/products/sync-jobs?page=1&limit=1'],
+        ['Issues', '/api/v1/products/issues?page=1&limit=1'],
+    ];
+    console.log('\n📦 Testing endpoints:');
+    for (const [name, url] of tests) {
+        const r = await fetch(`${BASE}${url}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const status = r.status === 200 ? '✅' : '❌';
+        console.log(`  ${status} ${name}: ${r.status} — ${(await r.text()).substring(0, 150)}`);
+    }
 })();

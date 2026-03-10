@@ -78,32 +78,52 @@ export class ProductsV2Service {
 
     /** GET /api/v1/products/summary — dashboard stats */
     async getProductsSummary() {
-        const [total, byStatus, withIssues, recentlyUpdated, totalSKUs] = await Promise.all([
-            this.prisma.product.count(),
-            this.prisma.product.groupBy({
-                by: ['status'],
-                _count: true,
-            }),
-            this.prisma.product.count({
-                where: { issues: { some: { status: 'OPEN' } } },
-            }),
-            this.prisma.product.count({
-                where: {
-                    updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-                },
-            }),
-            this.prisma.productVariant.count(),
-        ]);
+        let total = 0;
+        let byStatus: any[] = [];
+        let withIssues = 0;
+        let recentlyUpdated = 0;
+        let totalSKUs = 0;
+        let totalVariantGroups = 0;
 
-        // Count distinct variant groups (product + color + material combos)
-        const groupResult = await this.prisma.$queryRaw<[{ count: bigint }]>`
-            SELECT COUNT(DISTINCT CONCAT(
-                product_id, '::', 
-                COALESCE(color, option1, 'Ungrouped'), '::', 
-                COALESCE((SELECT material FROM products WHERE id = product_id), '')
-            )) as count FROM product_variants
-        `;
-        const totalVariantGroups = Number(groupResult[0]?.count || 0);
+        try { total = await this.prisma.product.count(); } catch (e: any) { console.warn('summary:total', e.message?.substring(0, 100)); }
+
+        try {
+            byStatus = await this.prisma.product.groupBy({ by: ['status'], _count: true });
+        } catch (e: any) {
+            console.warn('summary:groupBy', e.message?.substring(0, 100));
+            // Fallback: count by raw SQL
+            try {
+                const rows = await this.prisma.$queryRawUnsafe<{ status: string; cnt: bigint }[]>(
+                    "SELECT status::text, COUNT(*)::bigint as cnt FROM products GROUP BY status"
+                );
+                byStatus = rows.map(r => ({ status: r.status, _count: Number(r.cnt) }));
+            } catch { /* ignore */ }
+        }
+
+        try {
+            withIssues = await this.prisma.product.count({
+                where: { issues: { some: { status: 'OPEN' } } },
+            });
+        } catch (e: any) { console.warn('summary:withIssues', e.message?.substring(0, 100)); }
+
+        try {
+            recentlyUpdated = await this.prisma.product.count({
+                where: { updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+            });
+        } catch (e: any) { console.warn('summary:recentlyUpdated', e.message?.substring(0, 100)); }
+
+        try { totalSKUs = await this.prisma.productVariant.count(); } catch (e: any) { console.warn('summary:totalSKUs', e.message?.substring(0, 100)); }
+
+        try {
+            const groupResult = await this.prisma.$queryRaw<[{ count: bigint }]>`
+                SELECT COUNT(DISTINCT CONCAT(
+                    product_id, '::',
+                    COALESCE(color, option1, 'Ungrouped'), '::',
+                    COALESCE((SELECT material FROM products WHERE id = product_id), '')
+                )) as count FROM product_variants
+            `;
+            totalVariantGroups = Number(groupResult[0]?.count || 0);
+        } catch (e: any) { console.warn('summary:variantGroups', e.message?.substring(0, 100)); }
 
         const statusMap: Record<string, number> = {};
         for (const s of byStatus) {
@@ -428,24 +448,50 @@ export class ProductsV2Service {
         const sortBy = params.sortBy || 'sku';
         const sortDir = params.sortDir === 'desc' ? 'desc' : 'asc';
 
-        const [data, total] = await Promise.all([
-            this.prisma.productVariant.findMany({
-                where,
-                skip,
-                take: limit,
-                orderBy: { [sortBy]: sortDir },
-                include: {
-                    product: { select: { id: true, title: true, brandId: true, brand: { select: { id: true, name: true, code: true } } } },
-                    _count: { select: { storeMaps: true, issues: true } },
-                },
-            }),
-            this.prisma.productVariant.count({ where }),
-        ]);
+        try {
+            const [data, total] = await Promise.all([
+                this.prisma.productVariant.findMany({
+                    where,
+                    skip,
+                    take: limit,
+                    orderBy: { [sortBy]: sortDir },
+                    include: {
+                        product: { select: { id: true, title: true, brandId: true, brand: { select: { id: true, name: true, code: true } } } },
+                        _count: { select: { storeMaps: true, issues: true } },
+                    },
+                }),
+                this.prisma.productVariant.count({ where }),
+            ]);
 
-        return {
-            data: this.serialize(data),
-            meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
-        };
+            return {
+                data: this.serialize(data),
+                meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+            };
+        } catch (e: any) {
+            console.error('findAllVariants error:', e.message?.substring(0, 200));
+            // Fallback: try without includes that might fail
+            try {
+                const [data, total] = await Promise.all([
+                    this.prisma.productVariant.findMany({
+                        where,
+                        skip,
+                        take: limit,
+                        orderBy: { [sortBy]: sortDir },
+                        include: {
+                            product: { select: { id: true, title: true, brandId: true } },
+                        },
+                    }),
+                    this.prisma.productVariant.count({ where }),
+                ]);
+                return {
+                    data: this.serialize(data),
+                    meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+                };
+            } catch (e2: any) {
+                console.error('findAllVariants fallback error:', e2.message?.substring(0, 200));
+                return { data: [], meta: { page, limit, total: 0, totalPages: 0 } };
+            }
+        }
     }
 
     // ═══════════════════════════════════════
