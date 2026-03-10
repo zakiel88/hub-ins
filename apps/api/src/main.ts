@@ -86,9 +86,15 @@ async function bootstrap() {
                 END IF;
             END $$`,
 
-            // ── Fix old products table legacy columns (name, slug NOT NULL) ──
-            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN others THEN NULL; END $$`,
-            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN others THEN NULL; END $$`,
+            // ── Fix old products table legacy columns with NOT NULL constraints ──
+            `ALTER TABLE products ALTER COLUMN name SET DEFAULT ''`,
+            `ALTER TABLE products ALTER COLUMN name DROP NOT NULL`,
+            `ALTER TABLE products ALTER COLUMN slug SET DEFAULT ''`,
+            `ALTER TABLE products ALTER COLUMN slug DROP NOT NULL`,
+            `ALTER TABLE products ALTER COLUMN sku_prefix SET DEFAULT ''`,
+            `ALTER TABLE products ALTER COLUMN sku_prefix DROP NOT NULL`,
+            `ALTER TABLE products ALTER COLUMN handle SET DEFAULT ''`,
+            `ALTER TABLE products ALTER COLUMN handle DROP NOT NULL`,
             // ── Products table — add ALL columns Prisma expects ──
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id)`,
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS collection_id UUID REFERENCES collections(id)`,
