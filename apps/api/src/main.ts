@@ -325,6 +325,13 @@ async function bootstrap() {
             `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS shopify_resource_id VARCHAR(50)`,
             `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS shopify_metafield_id VARCHAR(50)`,
             `ALTER TABLE sync_job_logs ADD COLUMN IF NOT EXISTS payload JSONB`,
+            // ── Convert TEXT columns to enum types (Prisma requires proper enum types) ──
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN status TYPE "ProductStatus" USING status::"ProductStatus"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN status TYPE "VariantStatus" USING status::"VariantStatus"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN ins_discount_type TYPE "DiscountType" USING ins_discount_type::"DiscountType"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_sync_logs ALTER COLUMN action TYPE "SyncAction" USING action::"SyncAction"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_issues ALTER COLUMN severity TYPE "IssueSeverity" USING severity::"IssueSeverity"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_issues ALTER COLUMN status TYPE "IssueStatus" USING status::"IssueStatus"; EXCEPTION WHEN others THEN NULL; END $$`,
         ];
 
         let ok = 0;

@@ -162,6 +162,13 @@ export class ProductsV2Controller {
             `CREATE INDEX IF NOT EXISTS idx_pi_product ON product_issues(product_id)`,
             `CREATE INDEX IF NOT EXISTS idx_pi_variant ON product_issues(variant_id)`,
             `CREATE INDEX IF NOT EXISTS idx_pi_status ON product_issues(status)`,
+            // ── Convert TEXT columns to enum types (Prisma requires proper enum types) ──
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN status TYPE "ProductStatus" USING status::"ProductStatus"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN status TYPE "VariantStatus" USING status::"VariantStatus"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN ins_discount_type TYPE "DiscountType" USING ins_discount_type::"DiscountType"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_sync_logs ALTER COLUMN action TYPE "SyncAction" USING action::"SyncAction"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_issues ALTER COLUMN severity TYPE "IssueSeverity" USING severity::"IssueSeverity"; EXCEPTION WHEN others THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_issues ALTER COLUMN status TYPE "IssueStatus" USING status::"IssueStatus"; EXCEPTION WHEN others THEN NULL; END $$`,
         ];
         let ok = 0; let fail = 0; const errors: string[] = [];
         for (const sql of migrations) {
