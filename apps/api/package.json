@@ -5,8 +5,8 @@
     "scripts": {
         "dev": "nest start --watch",
         "build": "npx prisma generate --schema=./prisma/schema.prisma && npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma && nest build",
-        "start": "node dist/main",
-        "start:prod": "node dist/main",
+        "start": "npx prisma generate --schema=./prisma/schema.prisma && npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma && node dist/main",
+        "start:prod": "npx prisma generate --schema=./prisma/schema.prisma && npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma && node dist/main",
         "start:worker": "node dist/worker",
         "lint": "eslint \"{src,test}/**/*.ts\"",
         "typecheck": "tsc --noEmit",
