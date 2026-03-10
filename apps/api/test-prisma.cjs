@@ -1,38 +1,21 @@
-// Comprehensive schema check - get ALL columns + constraints for ALL product-related tables
+// Check actual shopify_variant_maps columns AND check _prisma_migrations
 (async () => {
-    const BASE = 'https://api.inecso.com';
-    const lr = await fetch(`${BASE}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'admin@ins.vn', password: 'Admin123' }),
-    });
-    const ld = await lr.json();
-    const t = ld.data?.token;
-    if (!t) { console.log('Login failed'); return; }
+    const B = 'https://api.inecso.com';
+    const lr = await fetch(`${B}/api/v1/auth/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email:'admin@ins.vn',password:'Admin123'})});
+    const t = (await lr.json()).data?.token;
 
-    // Query ALL product-related tables with their column details including is_nullable
-    const tables = ['products', 'product_variants', 'variant_groups', 'shopify_product_maps', 
-                     'shopify_variant_maps', 'product_sync_jobs', 'product_sync_logs', 
-                     'product_issues', 'product_images', 'product_validation_states'];
+    // Get debug info - shopify_variant_maps columns
+    const dr = await fetch(`${B}/api/v1/products/debug`, { headers:{Authorization:`Bearer ${t}`}});
+    const dd = await dr.json();
     
-    for (const table of tables) {
-        console.log(`\n=== ${table} ===`);
-        const r = await fetch(`${BASE}/api/v1/products/debug`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                query: `SELECT column_name, data_type, is_nullable, column_default 
-                        FROM information_schema.columns 
-                        WHERE table_name = '${table}' 
-                        ORDER BY ordinal_position`
-            }),
-        });
-        if (r.status !== 200) {
-            // Try GET debug endpoint instead
-            console.log(`  (status: ${r.status})`);
-            continue;
-        }
-        const d = await r.json();
-        console.log(JSON.stringify(d.data || d, null, 2));
+    // Find shopify_variant_maps columns in the debug response
+    console.log('=== Debug data (counts) ===');
+    console.log('Products:', dd.data?.productCount);
+    console.log('Variants:', dd.data?.variantCount);
+    console.log('VariantGroups:', dd.data?.variantGroupCount);
+    
+    console.log('\n=== Product columns ===');
+    for (const c of dd.data?.productColumns || []) {
+        console.log(`  ${c.column_name}: ${c.data_type}`);
     }
 })();

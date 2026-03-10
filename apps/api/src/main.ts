@@ -86,24 +86,37 @@ async function bootstrap() {
                 END IF;
             END $$`,
 
-            // ── Check if old schema exists & drop all old product tables ──
-            `DO $$ BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='name') THEN
-                    DROP TABLE IF EXISTS product_validation_states CASCADE;
-                    DROP TABLE IF EXISTS product_issues CASCADE;
-                    DROP TABLE IF EXISTS product_sync_logs CASCADE;
-                    DROP TABLE IF EXISTS product_sync_jobs CASCADE;
-                    DROP TABLE IF EXISTS shopify_variant_maps CASCADE;
-                    DROP TABLE IF EXISTS shopify_product_maps CASCADE;
-                    DROP TABLE IF EXISTS product_images CASCADE;
-                    DROP TABLE IF EXISTS product_variants CASCADE;
-                    DROP TABLE IF EXISTS variant_groups CASCADE;
-                    DROP TABLE IF EXISTS market_prices CASCADE;
-                    DROP TABLE IF EXISTS shopify_product_mappings CASCADE;
-                    DROP TABLE IF EXISTS colorways CASCADE;
-                    DROP TABLE IF EXISTS products CASCADE;
-                END IF;
-            END $$`,
+            // ── Fix old products table legacy NOT NULL constraints ──
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN name SET DEFAULT ''; ALTER TABLE products ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN slug SET DEFAULT ''; ALTER TABLE products ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN sku_prefix SET DEFAULT ''; ALTER TABLE products ALTER COLUMN sku_prefix DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN handle SET DEFAULT ''; ALTER TABLE products ALTER COLUMN handle DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN collection_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS style_code VARCHAR(100)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS title VARCHAR(500)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS material VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS season VARCHAR(50)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS featured_image_url TEXT`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS availability_type VARCHAR(50)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS lead_time_days INT`,
+            // Fix product_variants old constraints
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN color DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN size DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            // Drop broken mapping/sync tables + old Sprint-1 tables (NOT products/product_variants)
+            `DROP TABLE IF EXISTS product_validation_states CASCADE`,
+            `DROP TABLE IF EXISTS product_issues CASCADE`,
+            `DROP TABLE IF EXISTS product_sync_logs CASCADE`,
+            `DROP TABLE IF EXISTS product_sync_jobs CASCADE`,
+            `DROP TABLE IF EXISTS shopify_variant_maps CASCADE`,
+            `DROP TABLE IF EXISTS shopify_product_maps CASCADE`,
+            `DROP TABLE IF EXISTS product_images CASCADE`,
+            `DROP TABLE IF EXISTS market_prices CASCADE`,
+            `DROP TABLE IF EXISTS shopify_product_mappings CASCADE`,
+            `DROP TABLE IF EXISTS colorways CASCADE`,
 
             // ── Products (clean schema) ──
             `CREATE TABLE IF NOT EXISTS products (

@@ -69,7 +69,7 @@ export class ProductsV2Controller {
     async runMigration() {
         const prisma = this.products['prisma'];
         const migrations = [
-            // ── 1. Create enum types if missing ──
+            // ── 1. Create enum types ──
             `DO $$ BEGIN
                 IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ProductStatus') THEN CREATE TYPE "ProductStatus" AS ENUM ('ACTIVE', 'DRAFT', 'ARCHIVED'); END IF;
                 IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'VariantStatus') THEN CREATE TYPE "VariantStatus" AS ENUM ('ACTIVE', 'DRAFT', 'DISCONTINUED'); END IF;
@@ -79,49 +79,28 @@ export class ProductsV2Controller {
                 IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'IssueStatus') THEN CREATE TYPE "IssueStatus" AS ENUM ('OPEN', 'RESOLVED', 'IGNORED'); END IF;
             END $$`,
 
-            // ── 2. DROP ALL old product tables (CASCADE) — safe, 0 products ──
-            `DROP TABLE IF EXISTS product_validation_states CASCADE`,
-            `DROP TABLE IF EXISTS product_issues CASCADE`,
-            `DROP TABLE IF EXISTS product_sync_logs CASCADE`,
-            `DROP TABLE IF EXISTS product_sync_jobs CASCADE`,
-            `DROP TABLE IF EXISTS shopify_variant_maps CASCADE`,
-            `DROP TABLE IF EXISTS shopify_product_maps CASCADE`,
-            `DROP TABLE IF EXISTS product_images CASCADE`,
-            `DROP TABLE IF EXISTS product_variants CASCADE`,
-            `DROP TABLE IF EXISTS variant_groups CASCADE`,
-            // Also drop old Sprint-1 tables that conflict
-            `DROP TABLE IF EXISTS market_prices CASCADE`,
-            `DROP TABLE IF EXISTS shopify_product_mappings CASCADE`,
-            `DROP TABLE IF EXISTS colorways CASCADE`,
-            // Drop the products table itself (has old schema with name NOT NULL etc)
-            `DROP TABLE IF EXISTS products CASCADE`,
+            // ── 2. Fix products: drop ALL old NOT NULL constraints + add missing columns ──
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN name SET DEFAULT ''; ALTER TABLE products ALTER COLUMN name DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN slug SET DEFAULT ''; ALTER TABLE products ALTER COLUMN slug DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN sku_prefix SET DEFAULT ''; ALTER TABLE products ALTER COLUMN sku_prefix DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN handle SET DEFAULT ''; ALTER TABLE products ALTER COLUMN handle DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE products ALTER COLUMN collection_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS style_code VARCHAR(100)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS title VARCHAR(500)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS material VARCHAR(200)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS season VARCHAR(50)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS featured_image_url TEXT`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS availability_type VARCHAR(50)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS lead_time_days INT`,
 
-            // ── 3. Recreate products table from scratch ──
-            `CREATE TABLE products (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                brand_id UUID REFERENCES brands(id),
-                collection_id UUID REFERENCES collections(id),
-                style_code VARCHAR(100),
-                title VARCHAR(500) NOT NULL,
-                description TEXT,
-                product_type VARCHAR(200),
-                category VARCHAR(200),
-                material VARCHAR(200),
-                season VARCHAR(50),
-                featured_image_url TEXT,
-                availability_type VARCHAR(50),
-                lead_time_days INT,
-                status "ProductStatus" NOT NULL DEFAULT 'DRAFT',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )`,
-            `CREATE INDEX idx_products_brand ON products(brand_id)`,
-            `CREATE INDEX idx_products_collection ON products(collection_id)`,
-            `CREATE INDEX idx_products_status ON products(status)`,
-            `CREATE INDEX idx_products_style_code ON products(style_code)`,
-
-            // ── 4. variant_groups ──
-            `CREATE TABLE variant_groups (
+            // ── 3. Fix product_variants: drop old NOT NULL on color/size ──
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN color DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN size DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
+            `CREATE TABLE IF NOT EXISTS variant_groups (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
                 color VARCHAR(100), material VARCHAR(200),
@@ -131,10 +110,7 @@ export class ProductsV2Controller {
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT uq_vg_product_color_material UNIQUE (product_id, color, material)
             )`,
-            `CREATE INDEX idx_vg_product ON variant_groups(product_id)`,
-
-            // ── 5. product_variants ──
-            `CREATE TABLE product_variants (
+            `CREATE TABLE IF NOT EXISTS product_variants (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
                 variant_group_id UUID REFERENCES variant_groups(id),
@@ -142,31 +118,33 @@ export class ProductsV2Controller {
                 title VARCHAR(500), color VARCHAR(100), size VARCHAR(50),
                 option1 VARCHAR(255), option2 VARCHAR(255), option3 VARCHAR(255),
                 barcode VARCHAR(100), weight_grams INT,
-                price DECIMAL(12,2), compare_at_price DECIMAL(12,2),
-                vendor_cost DECIMAL(12,2),
-                ins_discount_type "DiscountType",
-                ins_discount_value DECIMAL(12,2),
-                estimated_margin DECIMAL(5,2),
-                image_url TEXT,
-                status "VariantStatus" NOT NULL DEFAULT 'DRAFT',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                price DECIMAL(12,2), compare_at_price DECIMAL(12,2), vendor_cost DECIMAL(12,2),
+                ins_discount_type TEXT, ins_discount_value DECIMAL(12,2), estimated_margin DECIMAL(5,2),
+                image_url TEXT, status TEXT NOT NULL DEFAULT 'DRAFT',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )`,
-            `CREATE INDEX idx_variants_product ON product_variants(product_id)`,
-            `CREATE INDEX idx_variants_vg ON product_variants(variant_group_id)`,
-            `CREATE INDEX idx_variants_barcode ON product_variants(barcode)`,
 
-            // ── 6. product_images ──
-            `CREATE TABLE product_images (
+            // ── 4. DROP broken mapping/sync tables + old Sprint-1 tables ──
+            `DROP TABLE IF EXISTS product_validation_states CASCADE`,
+            `DROP TABLE IF EXISTS product_issues CASCADE`,
+            `DROP TABLE IF EXISTS product_sync_logs CASCADE`,
+            `DROP TABLE IF EXISTS product_sync_jobs CASCADE`,
+            `DROP TABLE IF EXISTS shopify_variant_maps CASCADE`,
+            `DROP TABLE IF EXISTS shopify_product_maps CASCADE`,
+            `DROP TABLE IF EXISTS product_images CASCADE`,
+            `DROP TABLE IF EXISTS market_prices CASCADE`,
+            `DROP TABLE IF EXISTS shopify_product_mappings CASCADE`,
+            `DROP TABLE IF EXISTS colorways CASCADE`,
+
+            // ── 5. Recreate mapping/sync tables with CORRECT schema ──
+            `CREATE TABLE IF NOT EXISTS product_images (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
                 src TEXT NOT NULL, alt VARCHAR(500), position INT NOT NULL DEFAULT 0,
                 width INT, height INT, shopify_id BIGINT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )`,
-            `CREATE INDEX idx_pimg_product ON product_images(product_id)`,
-
-            // ── 7. shopify_product_maps ──
+            `CREATE INDEX IF NOT EXISTS idx_pimg_product ON product_images(product_id)`,
             `CREATE TABLE shopify_product_maps (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 store_id UUID NOT NULL REFERENCES shopify_stores(id),
@@ -181,8 +159,6 @@ export class ProductsV2Controller {
                 CONSTRAINT uq_spmap_store_product UNIQUE (store_id, shopify_product_id)
             )`,
             `CREATE INDEX idx_spmap_product ON shopify_product_maps(product_id)`,
-
-            // ── 8. shopify_variant_maps ──
             `CREATE TABLE shopify_variant_maps (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 store_id UUID NOT NULL REFERENCES shopify_stores(id),
@@ -196,8 +172,6 @@ export class ProductsV2Controller {
             )`,
             `CREATE INDEX idx_svmap_variant ON shopify_variant_maps(variant_id)`,
             `CREATE INDEX idx_svmap_sku ON shopify_variant_maps(shopify_sku)`,
-
-            // ── 9. product_sync_jobs ──
             `CREATE TABLE product_sync_jobs (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 store_id UUID REFERENCES shopify_stores(id),
@@ -214,8 +188,6 @@ export class ProductsV2Controller {
             )`,
             `CREATE INDEX idx_psj_store ON product_sync_jobs(store_id)`,
             `CREATE INDEX idx_psj_brand ON product_sync_jobs(brand_id)`,
-
-            // ── 10. product_sync_logs ──
             `CREATE TABLE product_sync_logs (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 job_id UUID NOT NULL REFERENCES product_sync_jobs(id) ON DELETE CASCADE,
@@ -225,8 +197,6 @@ export class ProductsV2Controller {
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )`,
             `CREATE INDEX idx_psl_job ON product_sync_logs(job_id)`,
-
-            // ── 11. product_issues ──
             `CREATE TABLE product_issues (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 product_id UUID REFERENCES products(id) ON DELETE CASCADE,
