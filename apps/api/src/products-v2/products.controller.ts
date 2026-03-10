@@ -61,6 +61,25 @@ export class ProductsV2Controller {
             });
             results.findManyWithIncludeResult = data;
         } catch (e: any) { results.findManyWithIncludeError = e.message?.substring(0, 300); }
+        // Test VariantGroup creation
+        try {
+            const firstProduct = await prisma.product.findFirst({ select: { id: true } });
+            if (firstProduct) {
+                const vg = await prisma.variantGroup.create({
+                    data: {
+                        productId: firstProduct.id,
+                        color: '__debug_test__',
+                        material: '',
+                        sizeRun: ['S', 'M', 'L'],
+                        position: 999,
+                    },
+                });
+                results.variantGroupCreateOK = vg.id;
+                // Clean up test record
+                await prisma.variantGroup.delete({ where: { id: vg.id } });
+                results.variantGroupDeleteOK = true;
+            }
+        } catch (e: any) { results.variantGroupCreateError = e.message?.substring(0, 500); }
         return { data: results };
     }
 
