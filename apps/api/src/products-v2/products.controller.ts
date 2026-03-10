@@ -35,36 +35,106 @@ export class ProductsV2Controller {
 
     @Get('products/debug')
     async debug() {
+        const prisma = this.products['prisma'];
         const results: Record<string, any> = {};
-        try {
-            results.productCount = await this.products['prisma'].product.count();
-        } catch (e: any) {
-            results.productCountError = e.message;
-        }
-        try {
-            results.variantCount = await this.products['prisma'].productVariant.count();
-        } catch (e: any) {
-            results.variantCountError = e.message;
-        }
-        try {
-            results.variantGroupCount = await this.products['prisma'].variantGroup.count();
-        } catch (e: any) {
-            results.variantGroupCountError = e.message;
-        }
-        try {
-            const first = await this.products['prisma'].product.findFirst({
-                include: { brand: true, _count: { select: { variants: true, issues: true } } },
-            });
-            results.firstProduct = first ? { id: first.id, title: first.title } : null;
-        } catch (e: any) {
-            results.firstProductError = e.message;
-        }
-        try {
-            results.syncJobCount = await this.products['prisma'].productSyncJob.count();
-        } catch (e: any) {
-            results.syncJobCountError = e.message;
-        }
+        try { results.productCount = await prisma.product.count(); } catch (e: any) { results.productCountError = e.message?.substring(0, 200); }
+        try { results.variantCount = await prisma.productVariant.count(); } catch (e: any) { results.variantCountError = e.message?.substring(0, 200); }
+        try { results.variantGroupCount = await prisma.variantGroup.count(); } catch (e: any) { results.variantGroupCountError = e.message?.substring(0, 200); }
+        try { results.syncJobCount = await prisma.productSyncJob.count(); } catch (e: any) { results.syncJobCountError = e.message?.substring(0, 200); }
+        try { results.issueCount = await prisma.productIssue.count(); } catch (e: any) { results.issueCountError = e.message?.substring(0, 200); }
+        try { results.imageCount = await prisma.productImage.count(); } catch (e: any) { results.imageCountError = e.message?.substring(0, 200); }
         return { data: results };
+    }
+
+    @Post('products/run-migration')
+    @Roles('admin')
+    async runMigration() {
+        const prisma = this.products['prisma'];
+        const migrations = [
+            `DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ProductStatus') THEN CREATE TYPE "ProductStatus" AS ENUM ('ACTIVE', 'DRAFT', 'ARCHIVED'); END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'VariantStatus') THEN CREATE TYPE "VariantStatus" AS ENUM ('ACTIVE', 'DRAFT', 'DISCONTINUED'); END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'DiscountType') THEN CREATE TYPE "DiscountType" AS ENUM ('PERCENT', 'FIXED'); END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SyncAction') THEN CREATE TYPE "SyncAction" AS ENUM ('CREATED', 'UPDATED', 'SKIPPED', 'FAILED'); END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'IssueSeverity') THEN CREATE TYPE "IssueSeverity" AS ENUM ('ERROR', 'WARNING', 'INFO'); END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'IssueStatus') THEN CREATE TYPE "IssueStatus" AS ENUM ('OPEN', 'RESOLVED', 'IGNORED'); END IF;
+            END $$`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS style_code VARCHAR(100)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS featured_image_url TEXT`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS availability_type VARCHAR(50)`,
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS lead_time_days INT`,
+            `CREATE INDEX IF NOT EXISTS idx_products_style_code ON products(style_code)`,
+            `CREATE TABLE IF NOT EXISTS variant_groups (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                color VARCHAR(100), material VARCHAR(200), size_run TEXT[] DEFAULT '{}', image_url TEXT,
+                position INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+            `CREATE INDEX IF NOT EXISTS idx_vg_product ON variant_groups(product_id)`,
+            `CREATE TABLE IF NOT EXISTS product_variants (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                variant_group_id UUID REFERENCES variant_groups(id), sku VARCHAR(100) NOT NULL UNIQUE,
+                title VARCHAR(500), color VARCHAR(100), size VARCHAR(50),
+                option1 VARCHAR(255), option2 VARCHAR(255), option3 VARCHAR(255),
+                barcode VARCHAR(100), weight_grams INT, price DECIMAL(12,2),
+                compare_at_price DECIMAL(12,2), vendor_cost DECIMAL(12,2),
+                ins_discount_type TEXT, ins_discount_value DECIMAL(12,2), estimated_margin DECIMAL(5,2),
+                image_url TEXT, status TEXT NOT NULL DEFAULT 'DRAFT',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+            `CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants(product_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_variants_vg ON product_variants(variant_group_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_variants_barcode ON product_variants(barcode)`,
+            `CREATE TABLE IF NOT EXISTS product_images (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                src TEXT NOT NULL, alt VARCHAR(500), position INT NOT NULL DEFAULT 0,
+                width INT, height INT, shopify_id BIGINT, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+            `CREATE INDEX IF NOT EXISTS idx_pimg_product ON product_images(product_id)`,
+            `CREATE TABLE IF NOT EXISTS shopify_product_maps (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(), store_id UUID NOT NULL REFERENCES shopify_stores(id),
+                product_id UUID NOT NULL REFERENCES products(id), shopify_product_id BIGINT NOT NULL,
+                handle VARCHAR(255), shopify_status VARCHAR(20), vendor VARCHAR(255),
+                tags TEXT[] DEFAULT '{}', body_html TEXT, shopify_category_id VARCHAR(100),
+                raw_snapshot JSONB, last_hash VARCHAR(64), synced_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT uq_spmap_store_product UNIQUE (store_id, shopify_product_id))`,
+            `CREATE INDEX IF NOT EXISTS idx_spmap_product ON shopify_product_maps(product_id)`,
+            `CREATE TABLE IF NOT EXISTS shopify_variant_maps (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(), store_id UUID NOT NULL REFERENCES shopify_stores(id),
+                variant_id UUID NOT NULL REFERENCES product_variants(id),
+                shopify_variant_id BIGINT NOT NULL, inventory_item_id BIGINT,
+                shopify_sku VARCHAR(100), raw_snapshot JSONB, synced_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT uq_svmap_store_variant UNIQUE (store_id, shopify_variant_id))`,
+            `CREATE INDEX IF NOT EXISTS idx_svmap_variant ON shopify_variant_maps(variant_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_svmap_sku ON shopify_variant_maps(shopify_sku)`,
+            `CREATE TABLE IF NOT EXISTS product_sync_jobs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(), store_id UUID REFERENCES shopify_stores(id),
+                brand_id UUID REFERENCES brands(id), source VARCHAR(20) NOT NULL DEFAULT 'shopify',
+                status VARCHAR(20) NOT NULL DEFAULT 'running', total_items INT NOT NULL DEFAULT 0,
+                created INT NOT NULL DEFAULT 0, updated INT NOT NULL DEFAULT 0,
+                skipped INT NOT NULL DEFAULT 0, failed INT NOT NULL DEFAULT 0,
+                error_msg TEXT, started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                completed_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+            `CREATE INDEX IF NOT EXISTS idx_psj_store ON product_sync_jobs(store_id)`,
+            `CREATE TABLE IF NOT EXISTS product_sync_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(), job_id UUID NOT NULL REFERENCES product_sync_jobs(id) ON DELETE CASCADE,
+                action TEXT NOT NULL, level VARCHAR(10) NOT NULL DEFAULT 'info',
+                message TEXT NOT NULL, data JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+            `CREATE INDEX IF NOT EXISTS idx_psl_job ON product_sync_logs(job_id)`,
+            `CREATE TABLE IF NOT EXISTS product_issues (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+                variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE,
+                rule_code VARCHAR(50) NOT NULL, severity TEXT NOT NULL DEFAULT 'WARNING',
+                status TEXT NOT NULL DEFAULT 'OPEN', message TEXT NOT NULL,
+                resolved_by UUID, resolved_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+            `CREATE INDEX IF NOT EXISTS idx_pi_product ON product_issues(product_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_pi_variant ON product_issues(variant_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_pi_status ON product_issues(status)`,
+        ];
+        let ok = 0; let fail = 0; const errors: string[] = [];
+        for (const sql of migrations) {
+            try { await prisma.$executeRawUnsafe(sql); ok++; } catch (e: any) { fail++; errors.push(e.message?.substring(0, 150)); }
+        }
+        return { data: { ok, fail, errors, total: migrations.length } };
     }
 
     // ═══════════════════════════════════════
