@@ -106,17 +106,23 @@ async function bootstrap() {
             // Fix product_variants old constraints
             `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN color DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
             `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN size DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
-            // Drop broken mapping/sync tables + old Sprint-1 tables (NOT products/product_variants)
-            `DROP TABLE IF EXISTS product_validation_states CASCADE`,
-            `DROP TABLE IF EXISTS product_issues CASCADE`,
-            `DROP TABLE IF EXISTS product_sync_logs CASCADE`,
-            `DROP TABLE IF EXISTS product_sync_jobs CASCADE`,
-            `DROP TABLE IF EXISTS shopify_variant_maps CASCADE`,
-            `DROP TABLE IF EXISTS shopify_product_maps CASCADE`,
-            `DROP TABLE IF EXISTS product_images CASCADE`,
-            `DROP TABLE IF EXISTS market_prices CASCADE`,
-            `DROP TABLE IF EXISTS shopify_product_mappings CASCADE`,
-            `DROP TABLE IF EXISTS colorways CASCADE`,
+            // Drop broken mapping/sync tables ONLY if old schema detected (colorway_id in shopify_variant_maps)
+            `DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shopify_variant_maps' AND column_name='colorway_id')
+                OR NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='shopify_variant_maps')
+                THEN
+                    DROP TABLE IF EXISTS product_validation_states CASCADE;
+                    DROP TABLE IF EXISTS product_issues CASCADE;
+                    DROP TABLE IF EXISTS product_sync_logs CASCADE;
+                    DROP TABLE IF EXISTS product_sync_jobs CASCADE;
+                    DROP TABLE IF EXISTS shopify_variant_maps CASCADE;
+                    DROP TABLE IF EXISTS shopify_product_maps CASCADE;
+                    DROP TABLE IF EXISTS product_images CASCADE;
+                    DROP TABLE IF EXISTS market_prices CASCADE;
+                    DROP TABLE IF EXISTS shopify_product_mappings CASCADE;
+                    DROP TABLE IF EXISTS colorways CASCADE;
+                END IF;
+            END $$`,
 
             // ── Products (clean schema) ──
             `CREATE TABLE IF NOT EXISTS products (
