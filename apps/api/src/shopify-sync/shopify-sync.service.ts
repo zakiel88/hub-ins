@@ -244,55 +244,99 @@ export class ShopifySyncService {
             masterProductId = newProduct.id;
         }
 
-        // 5. Upsert variants (Colorways)
+        // 5. Group variants by color (option1) → VariantGroups, then upsert variants
+        // Build groups: color → { sizes[], imageUrl, variants[] }
+        const colorGroups = new Map<string, { sizes: Set<string>; imageUrl: string | null; variants: any[] }>();
         for (const variant of variants) {
-            if (!variant.sku) continue; // Skip variants without SKU
+            if (!variant.sku) continue;
+            const color = variant.option1 || '—';
+            if (!colorGroups.has(color)) {
+                colorGroups.set(color, { sizes: new Set(), imageUrl: null, variants: [] });
+            }
+            const group = colorGroups.get(color)!;
+            if (variant.option2) group.sizes.add(variant.option2);
+            if (!group.imageUrl && variant.image_id) {
+                group.imageUrl = images.find((img: any) => img.id === variant.image_id)?.src || null;
+            }
+            group.variants.push(variant);
+        }
 
-            const colorwayData = {
-                productId: masterProductId,
-                color: variant.option1 || '—',
-                size: variant.option2 || '—',
-                barcode: variant.barcode || null,
-                weightGrams: variant.grams || null,
-                option1: variant.option1 || null,
-                option2: variant.option2 || null,
-                option3: variant.option3 || null,
-                price: variant.price ? parseFloat(variant.price) : null,
-                compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
-                imageUrl: variant.image_id ? images.find((img: any) => img.id === variant.image_id)?.src || null : null,
-            };
-
-            const colorway = await this.prisma.productVariant.upsert({
-                where: { sku: variant.sku },
-                update: colorwayData,
-                create: { sku: variant.sku, ...colorwayData },
-            });
-
-            // 6. Create/update ShopifyVariantMap
-            await this.prisma.shopifyVariantMap.upsert({
+        // Upsert VariantGroups and then their variants
+        let groupPosition = 0;
+        for (const [color, groupData] of colorGroups) {
+            // Upsert VariantGroup (unique by productId + color + material)
+            const variantGroup = await this.prisma.variantGroup.upsert({
                 where: {
-                    uq_svmap_store_variant: {
-                        storeId,
-                        shopifyVariantId: BigInt(variant.id),
+                    uq_vg_product_color_material: {
+                        productId: masterProductId,
+                        color,
+                        material: '',
                     },
                 },
                 update: {
-                    variantId: colorway.id,
-                    inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
-                    syncedAt: new Date(),
+                    sizeRun: Array.from(groupData.sizes),
+                    imageUrl: groupData.imageUrl,
                 },
                 create: {
-                    storeId,
-                    variantId: colorway.id,
-                    shopifyVariantId: BigInt(variant.id),
-                    inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
-                    syncedAt: new Date(),
+                    productId: masterProductId,
+                    color,
+                    material: '',
+                    sizeRun: Array.from(groupData.sizes),
+                    imageUrl: groupData.imageUrl,
+                    position: groupPosition,
                 },
             });
+            groupPosition++;
 
-            // 7. ProductPublication/VariantPublication removed in v3.1
-            // ShopifyProductMap (step 8) now handles the store↔product mapping
+            // Upsert each variant in this group
+            for (const variant of groupData.variants) {
+                const colorwayData = {
+                    productId: masterProductId,
+                    variantGroupId: variantGroup.id,
+                    color: variant.option1 || '—',
+                    size: variant.option2 || '—',
+                    barcode: variant.barcode || null,
+                    weightGrams: variant.grams || null,
+                    option1: variant.option1 || null,
+                    option2: variant.option2 || null,
+                    option3: variant.option3 || null,
+                    price: variant.price ? parseFloat(variant.price) : null,
+                    compareAtPrice: variant.compare_at_price ? parseFloat(variant.compare_at_price) : null,
+                    imageUrl: variant.image_id ? images.find((img: any) => img.id === variant.image_id)?.src || null : null,
+                };
+
+                const colorway = await this.prisma.productVariant.upsert({
+                    where: { sku: variant.sku },
+                    update: colorwayData,
+                    create: { sku: variant.sku, ...colorwayData },
+                });
+
+                // 6. Create/update ShopifyVariantMap
+                await this.prisma.shopifyVariantMap.upsert({
+                    where: {
+                        uq_svmap_store_variant: {
+                            storeId,
+                            shopifyVariantId: BigInt(variant.id),
+                        },
+                    },
+                    update: {
+                        variantId: colorway.id,
+                        inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
+                        syncedAt: new Date(),
+                    },
+                    create: {
+                        storeId,
+                        variantId: colorway.id,
+                        shopifyVariantId: BigInt(variant.id),
+                        inventoryItemId: variant.inventory_item_id ? BigInt(variant.inventory_item_id) : null,
+                        syncedAt: new Date(),
+                    },
+                });
+            }
         }
+
+        // 7. ProductPublication/VariantPublication removed in v3.1
+        // ShopifyProductMap (step 8) now handles the store↔product mapping
 
         // 8. Create/update ShopifyProductMap
         await this.prisma.shopifyProductMap.upsert({
