@@ -96,6 +96,20 @@ export class OrderPipelineController {
             const order = await this.pipeline.getOrderById(orderId);
             const addr = (order.shippingAddress || {}) as Record<string, any>;
 
+            if (!addr.address1 && !addr.city && !addr.country) {
+                return {
+                    orderId,
+                    address: addr,
+                    fedex: {
+                        valid: false,
+                        classification: 'UNKNOWN',
+                        resolvedAddress: null,
+                        changes: ['Đơn hàng chưa có thông tin địa chỉ giao hàng'],
+                        provider: 'none',
+                    },
+                };
+            }
+
             // Auto: FedEx first → Google fallback for unsupported countries
             const result = await this.fedex.validateAddressAuto(addr);
 
@@ -111,8 +125,19 @@ export class OrderPipelineController {
                 },
             };
         } catch (error: any) {
-            console.error('Address validation error:', error.message, error.stack);
-            throw error;
+            console.error('Address validation error:', error.message);
+            // Return graceful error instead of 500
+            return {
+                orderId,
+                address: {},
+                fedex: {
+                    valid: false,
+                    classification: 'UNKNOWN',
+                    resolvedAddress: null,
+                    changes: [`Lỗi kiểm tra địa chỉ: ${error.message}`],
+                    provider: 'error',
+                },
+            };
         }
     }
 
