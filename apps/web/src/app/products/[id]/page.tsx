@@ -158,7 +158,7 @@ export default function ProductDetailPage() {
                 <OverviewTab product={product} editing={editing} editData={editData} setEditData={setEditData} />
             )}
             {activeTab === 'variants' && (
-                <VariantGroupsTab groups={vGroups} ungrouped={ungroupedVariants} productId={id} product={product} />
+                <VariantGroupsTab groups={vGroups} ungrouped={ungroupedVariants} productId={id} product={product} editing={editing} onProductUpdate={setProduct} />
             )}
             {activeTab === 'images' && (
                 <ImagesTab images={product.images || []} />
@@ -220,7 +220,7 @@ function OverviewTab({ product, editing, editData, setEditData }: any) {
 }
 
 
-function VariantGroupsTab({ groups, ungrouped, productId, product }: { groups: any[]; ungrouped: any[]; productId: string; product: any }) {
+function VariantGroupsTab({ groups, ungrouped, productId, product, editing, onProductUpdate }: { groups: any[]; ungrouped: any[]; productId: string; product: any; editing?: boolean; onProductUpdate?: (p: any) => void }) {
     const [showAddGroup, setShowAddGroup] = useState(false);
     const [groupForm, setGroupForm] = useState({ color: '', material: '', sizeRunInput: '', price: '', vendorCost: '', imageUrl: '', currency: 'USD' });
     const [sizeRun, setSizeRun] = useState<string[]>([]);
@@ -529,91 +529,182 @@ function VariantGroupsTab({ groups, ungrouped, productId, product }: { groups: a
             )}
 
             {/* Groups + Ungrouped */}
-            {groups.length === 0 && ungrouped.length === 0 ? (
-                <div style={{ color: '#666', padding: 20 }}>No variant groups or SKUs yet.</div>
-            ) : (
-                <>
-                    {groups.map((g: any) => {
-                        const gn = g.material ? `${g.color || 'N/A'} / ${g.material}` : (g.color || 'Ungrouped');
-                        return (
-                            <div key={g.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.04)', flexWrap: 'wrap' }}>
-                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'linear-gradient(135deg, #818cf8, #6366f1)', flexShrink: 0 }} />
-                                    <span style={{ fontWeight: 700, fontSize: 14 }}>{gn}</span>
-                                    <span style={{ fontSize: 12, color: '#64748b' }}>{g.variants?.length || 0} SKUs</span>
-                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: 8 }}>
-                                        {(g.sizeRun || []).map((s: string) => (
-                                            <span key={s} style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>{s}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                                {g.variants?.length > 0 && (
-                                    <table className="data-table" style={{ margin: 0 }}>
-                                        <thead><tr><th>SKU</th><th>Size</th><th>Price</th><th>Cost</th><th>Margin</th><th>Status</th><th>Stores</th></tr></thead>
-                                        <tbody>
-                                            {g.variants.map((v: any) => {
-                                                const si = STATUS_CONFIG[v.status] || STATUS_CONFIG.DRAFT;
-                                                const m = v.estimatedMargin != null ? parseFloat(v.estimatedMargin) : null;
-                                                return (
-                                                    <tr key={v.id}>
-                                                        <td className="cell-mono" style={{ fontWeight: 600 }}>{v.sku}</td>
-                                                        <td className="cell-primary">{v.size || '\u2014'}</td>
-                                                        <td className="cell-muted">{v.price ? `$${parseFloat(v.price).toFixed(2)}` : '\u2014'}</td>
-                                                        <td className="cell-muted">{v.vendorCost ? `$${parseFloat(v.vendorCost).toFixed(2)}` : '\u2014'}</td>
-                                                        <td style={{ color: m != null ? (m < 0 ? '#ef4444' : m < 20 ? '#f59e0b' : '#22c55e') : '#555', fontWeight: 600, fontSize: 12 }}>
-                                                            {m != null ? `${m.toFixed(1)}%` : '\u2014'}
-                                                        </td>
-                                                        <td><span className="status-badge" style={{ background: si.bg, color: si.color }}>{si.label}</span></td>
-                                                        <td style={{ textAlign: 'center' }}>
-                                                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: 11 }}>{v.storeMaps?.length || 0}</span>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                )}
-                            </div>
-                        );
-                    })}
-
-                    {ungrouped.length > 0 && (
-                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'rgba(245,158,11,0.05)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                <span style={{ fontSize: 14 }}>\u26a0\ufe0f</span>
-                                <span style={{ fontWeight: 700, fontSize: 14, color: '#f59e0b' }}>Ungrouped SKUs</span>
-                                <span style={{ fontSize: 12, color: '#64748b' }}>{ungrouped.length} SKUs (imported)</span>
-                            </div>
-                            <table className="data-table" style={{ margin: 0 }}>
-                                <thead><tr><th>SKU</th><th>Color</th><th>Size</th><th>Price</th><th>Cost</th><th>Status</th><th>Stores</th></tr></thead>
-                                <tbody>
-                                    {ungrouped.map((v: any) => {
-                                        const si = STATUS_CONFIG[v.status] || STATUS_CONFIG.DRAFT;
-                                        return (
-                                            <tr key={v.id}>
-                                                <td className="cell-mono" style={{ fontWeight: 600 }}>{v.sku}</td>
-                                                <td className="cell-primary">{v.color || '\u2014'}</td>
-                                                <td className="cell-primary">{v.size || '\u2014'}</td>
-                                                <td className="cell-muted">{v.price ? `$${parseFloat(v.price).toFixed(2)}` : '\u2014'}</td>
-                                                <td className="cell-muted">{v.vendorCost ? `$${parseFloat(v.vendorCost).toFixed(2)}` : '\u2014'}</td>
-                                                <td><span className="status-badge" style={{ background: si.bg, color: si.color }}>{si.label}</span></td>
-                                                <td style={{ textAlign: 'center' }}>
-                                                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: 11 }}>{v.storeMaps?.length || 0}</span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </>
-            )}
+            <VariantList groups={groups} ungrouped={ungrouped} editing={editing} productId={productId} onProductUpdate={onProductUpdate} />
         </div>
     );
 }
 
 
+
+// ─── Inline-editable variant list ───
+function VariantList({ groups, ungrouped, editing, productId, onProductUpdate }: {
+    groups: any[]; ungrouped: any[]; productId: string; editing?: boolean; onProductUpdate?: (p: any) => void;
+}) {
+    const [edits, setEdits] = useState<Record<string, any>>({});
+    const [saving, setSaving] = useState<Record<string, boolean>>({});
+    const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+    const [bulkSaving, setBulkSaving] = useState(false);
+    const [bulkMsg, setBulkMsg] = useState('');
+
+    const allVariants = [
+        ...groups.flatMap((g: any) => (g.variants || []).map((v: any) => v)),
+        ...ungrouped,
+    ];
+
+    const getVal = (vid: string, field: string, original: any) => edits[vid]?.[field] ?? original;
+
+    const setVal = (vid: string, field: string, value: any) => {
+        setEdits(prev => ({ ...prev, [vid]: { ...prev[vid], [field]: value } }));
+        setSavedIds(prev => { const n = new Set(prev); n.delete(vid); return n; });
+    };
+
+    const saveOne = async (v: any) => {
+        const c = edits[v.id];
+        if (!c || Object.keys(c).length === 0) return;
+        setSaving(prev => ({ ...prev, [v.id]: true }));
+        try {
+            await api.updateVariant(productId, v.id, {
+                ...(c.price != null ? { price: parseFloat(c.price) } : {}),
+                ...(c.vendorCost != null ? { vendorCost: parseFloat(c.vendorCost) } : {}),
+                ...(c.color != null ? { color: c.color } : {}),
+                ...(c.size != null ? { size: c.size } : {}),
+                ...(c.status != null ? { status: c.status } : {}),
+            });
+            setSavedIds(prev => new Set(prev).add(v.id));
+        } catch (e: any) {
+            alert(`Failed to save ${v.sku}: ${e.message}`);
+        } finally {
+            setSaving(prev => ({ ...prev, [v.id]: false }));
+        }
+    };
+
+    const saveAll = async () => {
+        const ids = Object.keys(edits).filter(id => Object.keys(edits[id] || {}).length > 0 && !savedIds.has(id));
+        if (ids.length === 0) { setBulkMsg('No changes'); return; }
+        setBulkSaving(true); setBulkMsg('');
+        let ok = 0;
+        for (const vid of ids) {
+            const v = allVariants.find((x: any) => x.id === vid);
+            if (!v) continue;
+            try { await saveOne(v); ok++; } catch { /* counted by saveOne alert */ }
+        }
+        setBulkSaving(false);
+        setBulkMsg(`✅ Saved ${ok} variant${ok > 1 ? 's' : ''}`);
+        if (onProductUpdate) {
+            try { const res = await api.getProduct(productId); onProductUpdate(res.data); } catch { }
+        }
+    };
+
+    const inp: React.CSSProperties = {
+        padding: '4px 8px', borderRadius: 4, border: '1px solid rgba(99,102,241,0.3)',
+        background: 'rgba(0,0,0,0.3)', color: '#e2e8f0', fontSize: 12, width: 80, textAlign: 'right',
+    };
+
+    const renderRow = (v: any, showColor?: boolean) => {
+        const hasCh = edits[v.id] && Object.keys(edits[v.id]).length > 0 && !savedIds.has(v.id);
+        const price = parseFloat(getVal(v.id, 'price', v.price) || '0');
+        const cost = parseFloat(getVal(v.id, 'vendorCost', v.vendorCost) || '0');
+        const margin = price > 0 && cost > 0 ? ((1 - cost / price) * 100) : null;
+        const st = getVal(v.id, 'status', v.status) || 'ACTIVE';
+        const si = STATUS_CONFIG[st] || STATUS_CONFIG.DRAFT;
+        return (
+            <tr key={v.id} style={{ background: hasCh ? 'rgba(99,102,241,0.04)' : undefined }}>
+                <td className="cell-mono" style={{ fontWeight: 600, fontSize: 11 }}>{v.sku}</td>
+                {showColor && <td>{editing
+                    ? <input value={getVal(v.id, 'color', v.color || '')} onChange={e => setVal(v.id, 'color', e.target.value)} style={{ ...inp, width: 70, textAlign: 'left' }} />
+                    : <span className="cell-primary">{v.color || '—'}</span>}</td>}
+                <td>{editing
+                    ? <input value={getVal(v.id, 'size', v.size || '')} onChange={e => setVal(v.id, 'size', e.target.value)} style={{ ...inp, width: 50, textAlign: 'center' }} />
+                    : <span className="cell-primary">{v.size || '—'}</span>}</td>
+                <td>{editing
+                    ? <input type="number" step="0.01" value={getVal(v.id, 'price', v.price ?? '')} onChange={e => setVal(v.id, 'price', e.target.value)} placeholder="0.00" style={inp} />
+                    : <span className="cell-muted">{v.price ? `$${parseFloat(v.price).toFixed(2)}` : '—'}</span>}</td>
+                <td>{editing
+                    ? <input type="number" step="0.01" value={getVal(v.id, 'vendorCost', v.vendorCost ?? '')} onChange={e => setVal(v.id, 'vendorCost', e.target.value)} placeholder="0.00" style={inp} />
+                    : <span className="cell-muted">{v.vendorCost ? `$${parseFloat(v.vendorCost).toFixed(2)}` : '—'}</span>}</td>
+                <td style={{ color: margin != null ? (margin < 0 ? '#ef4444' : margin < 20 ? '#f59e0b' : '#22c55e') : '#555', fontWeight: 600, fontSize: 12 }}>
+                    {margin != null ? `${margin.toFixed(1)}%` : '—'}
+                </td>
+                <td>{editing
+                    ? <select value={st} onChange={e => setVal(v.id, 'status', e.target.value)}
+                        style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(0,0,0,0.3)', color: si.color, fontSize: 11, cursor: 'pointer' }}>
+                        <option value="ACTIVE">Active</option><option value="DRAFT">Draft</option><option value="DISCONTINUED">Discontinued</option>
+                      </select>
+                    : <span className="status-badge" style={{ background: si.bg, color: si.color }}>{si.label}</span>}</td>
+                <td style={{ textAlign: 'center' }}>
+                    {editing && hasCh ? (
+                        saving[v.id] ? <span style={{ fontSize: 11, color: '#818cf8' }}>⏳</span>
+                        : <button onClick={() => saveOne(v)} style={{ padding: '2px 8px', borderRadius: 4, border: 'none', background: 'rgba(99,102,241,0.2)', color: '#818cf8', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                    ) : editing && savedIds.has(v.id) ? (
+                        <span style={{ fontSize: 11, color: '#22c55e' }}>✓</span>
+                    ) : (
+                        <span style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: 11 }}>{v.storeMaps?.length || 0}</span>
+                    )}
+                </td>
+            </tr>
+        );
+    };
+
+    if (groups.length === 0 && ungrouped.length === 0) {
+        return <div style={{ color: '#666', padding: 20 }}>No variant groups or SKUs yet.</div>;
+    }
+
+    const unsavedCount = Object.keys(edits).filter(id => Object.keys(edits[id] || {}).length > 0 && !savedIds.has(id)).length;
+
+    return (
+        <>
+            {editing && unsavedCount > 0 && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, padding: '8px 12px', background: 'rgba(99,102,241,0.06)', borderRadius: 8, border: '1px solid rgba(99,102,241,0.15)' }}>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{unsavedCount} unsaved change{unsavedCount > 1 ? 's' : ''}</span>
+                    <button onClick={saveAll} disabled={bulkSaving} style={{
+                        padding: '6px 16px', borderRadius: 6, border: 'none',
+                        background: bulkSaving ? '#374151' : '#818cf8', color: 'white',
+                        fontSize: 12, fontWeight: 600, cursor: bulkSaving ? 'default' : 'pointer',
+                    }}>{bulkSaving ? '⏳ Saving...' : '💾 Save All Changes'}</button>
+                    {bulkMsg && <span style={{ fontSize: 12, color: '#34d399' }}>{bulkMsg}</span>}
+                </div>
+            )}
+
+            {groups.map((g: any) => {
+                const gn = g.material ? `${g.color || 'N/A'} / ${g.material}` : (g.color || 'Ungrouped');
+                return (
+                    <div key={g.id} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.04)', flexWrap: 'wrap' }}>
+                            <div style={{ width: 10, height: 10, borderRadius: '50%', background: 'linear-gradient(135deg, #818cf8, #6366f1)', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 700, fontSize: 14 }}>{gn}</span>
+                            <span style={{ fontSize: 12, color: '#64748b' }}>{g.variants?.length || 0} SKUs</span>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: 8 }}>
+                                {(g.sizeRun || []).map((s: string) => (
+                                    <span key={s} style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>{s}</span>
+                                ))}
+                            </div>
+                        </div>
+                        {g.variants?.length > 0 && (
+                            <table className="data-table" style={{ margin: 0 }}>
+                                <thead><tr><th>SKU</th><th>Size</th><th>Price</th><th>Cost</th><th>Margin</th><th>Status</th><th>{editing ? '' : 'Stores'}</th></tr></thead>
+                                <tbody>{g.variants.map((v: any) => renderRow(v, false))}</tbody>
+                            </table>
+                        )}
+                    </div>
+                );
+            })}
+
+            {ungrouped.length > 0 && (
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'rgba(245,158,11,0.05)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <span style={{ fontSize: 14 }}>⚠️</span>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: '#f59e0b' }}>Ungrouped SKUs</span>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>{ungrouped.length} SKUs (imported)</span>
+                    </div>
+                    <table className="data-table" style={{ margin: 0 }}>
+                        <thead><tr><th>SKU</th><th>Color</th><th>Size</th><th>Price</th><th>Cost</th><th>Margin</th><th>Status</th><th>{editing ? '' : 'Stores'}</th></tr></thead>
+                        <tbody>{ungrouped.map((v: any) => renderRow(v, true))}</tbody>
+                    </table>
+                </div>
+            )}
+        </>
+    );
+}
 
 function ImagesTab({ images }: { images: any[] }) {
     if (images.length === 0) return <div style={{ color: '#666', padding: 20 }}>No images yet. Images are synced from Shopify during import.</div>;
