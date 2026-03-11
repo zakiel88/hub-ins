@@ -64,24 +64,47 @@ export class OrdersService {
                 where: { id },
                 include: {
                     shopifyStore: { select: { storeName: true, shopifyDomain: true } },
-                    lineItems: {
-                        include: {
-                            variant: {
-                                include: {
-                                    product: {
-                                        include: {
-                                            brand: { select: { id: true, name: true, code: true } },
-                                        },
-                                    },
-                                },
-                            },
-                            brand: { select: { id: true, name: true, code: true } },
-                        },
-                    },
+                    lineItems: true,
                 },
             });
             if (!order) throw new NotFoundException('Order not found');
-            return { data: this.serializeOrder(order) };
+
+            // Enrich line items with variant/product/brand info (defensive)
+            const enrichedLineItems = await Promise.all(
+                (order.lineItems || []).map(async (li: any) => {
+                    let variant = null;
+                    let brand = null;
+
+                    if (li.variantId) {
+                        try {
+                            variant = await this.prisma.productVariant.findUnique({
+                                where: { id: li.variantId },
+                                select: {
+                                    id: true, sku: true, color: true, size: true, price: true,
+                                    product: { select: { id: true, title: true, brandId: true, featuredImageUrl: true } },
+                                },
+                            });
+                        } catch (e) {
+                            this.logger.warn(`Could not load variant ${li.variantId}: ${(e as Error).message}`);
+                        }
+                    }
+
+                    if (li.brandId) {
+                        try {
+                            brand = await this.prisma.brand.findUnique({
+                                where: { id: li.brandId },
+                                select: { id: true, name: true, code: true },
+                            });
+                        } catch (e) {
+                            this.logger.warn(`Could not load brand ${li.brandId}: ${(e as Error).message}`);
+                        }
+                    }
+
+                    return { ...li, variant, brand };
+                }),
+            );
+
+            return { data: this.serializeOrder({ ...order, lineItems: enrichedLineItems }) };
         } catch (e: any) {
             if (e instanceof NotFoundException) throw e;
             this.logger.error(`findById(${id}) failed: ${e.message}`, e.stack);
