@@ -37,17 +37,28 @@ export class OrderPipelineService {
         private readonly audit: AuditService,
     ) { }
 
-    /** Get order by ID with full includes */
+    /** Get order by ID with full includes (defensive) */
     async getOrderById(orderId: string) {
         const order = await this.prisma.order.findUnique({
             where: { id: orderId },
             include: {
-                lineItems: { include: { brand: true } },
                 shopifyStore: { select: { id: true, storeName: true } },
             },
         });
         if (!order) throw new BadRequestException('Order not found');
-        return order;
+
+        // Load lineItems separately with defensive brand include
+        let lineItems: any[] = [];
+        try {
+            lineItems = await this.prisma.orderLineItem.findMany({
+                where: { orderId },
+                include: { brand: { select: { id: true, name: true, code: true } } },
+            });
+        } catch {
+            lineItems = await this.prisma.orderLineItem.findMany({ where: { orderId } });
+        }
+
+        return { ...order, lineItems };
     }
 
     /** Transition an order to a new pipeline state */
@@ -144,41 +155,43 @@ export class OrderPipelineService {
         });
 
         // Return updated order with items
-        const updatedOrder = await this.prisma.order.findUnique({
-            where: { id: orderId },
-            include: {
-                lineItems: { include: { brand: true } },
-                shopifyStore: { select: { id: true, storeName: true } },
-            },
-        });
-
+        const updatedOrder = await this.getOrderById(orderId);
         return { data: this.serialize(updatedOrder), createdPR };
     }
 
     /** Check stock levels for ALL items in an order */
     async checkStockAll(orderId: string) {
-        const items = await this.prisma.orderLineItem.findMany({
-            where: { orderId },
-            include: { brand: true },
-        });
+        let items: any[];
+        try {
+            items = await this.prisma.orderLineItem.findMany({
+                where: { orderId },
+                include: { brand: { select: { id: true, name: true, code: true } } },
+            });
+        } catch {
+            items = await this.prisma.orderLineItem.findMany({ where: { orderId } });
+        }
 
         const stockInfo: Record<string, { available: number; onHand: number; reserved: number }> = {};
 
         for (const item of items) {
             if (item.variantId) {
-                const invItems = await this.prisma.inventoryItem.findMany({
-                    where: { variantId: item.variantId },
-                });
-                const onHand = invItems.reduce((s, i) => s + i.quantityOnHand, 0);
-                const reserved = invItems.reduce((s, i) => s + i.quantityReserved, 0);
-                stockInfo[item.id] = { available: onHand - reserved, onHand, reserved };
+                try {
+                    const invItems = await this.prisma.inventoryItem.findMany({
+                        where: { variantId: item.variantId },
+                    });
+                    const onHand = invItems.reduce((s: number, i: any) => s + i.quantityOnHand, 0);
+                    const reserved = invItems.reduce((s: number, i: any) => s + i.quantityReserved, 0);
+                    stockInfo[item.id] = { available: onHand - reserved, onHand, reserved };
+                } catch {
+                    stockInfo[item.id] = { available: 0, onHand: 0, reserved: 0 };
+                }
             } else {
                 stockInfo[item.id] = { available: 0, onHand: 0, reserved: 0 };
             }
         }
 
         return {
-            data: items.map(i => ({
+            data: items.map((i: any) => ({
                 ...this.serialize(i),
                 stock: stockInfo[i.id],
             })),
@@ -247,14 +260,7 @@ export class OrderPipelineService {
         });
 
         // Return updated order
-        const updated = await this.prisma.order.findUnique({
-            where: { id: orderId },
-            include: {
-                lineItems: { include: { brand: true } },
-                shopifyStore: { select: { id: true, storeName: true } },
-            },
-        });
-
+        const updated = await this.getOrderById(orderId);
         return { data: this.serialize(updated), createdPRs };
     }
 

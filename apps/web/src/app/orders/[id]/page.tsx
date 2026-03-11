@@ -119,7 +119,7 @@ function ItemsTab({ order, orderId, state, showToast, onOrderUpdate }: {
 
     const pendingCount = items.filter(i => i.itemState === 'PENDING').length;
     const selectedCount = selected.size;
-    const isMerCheck = state === 'MER_CHECK';
+    const isActionable = !['FULFILLED', 'CANCELLED'].includes(state);
 
     const getBrand = (li: any) => {
         // 1) Mapped brand (from brandId relation)
@@ -134,7 +134,7 @@ function ItemsTab({ order, orderId, state, showToast, onOrderUpdate }: {
     return (
         <div>
             {/* Toolbar */}
-            {isMerCheck && (
+            {isActionable && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
                     <button onClick={handleCheckStock} disabled={checking} style={{ padding: '8px 18px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13, opacity: checking ? 0.6 : 1 }}>
                         {checking ? '⏳ Đang kiểm...' : '🔍 Check Stock'}
@@ -157,7 +157,7 @@ function ItemsTab({ order, orderId, state, showToast, onOrderUpdate }: {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                            {isMerCheck && stockChecked && (
+                            {isActionable && stockChecked && (
                                 <th style={{ padding: '10px 10px 10px 14px', width: 30 }}>
                                     <input type="checkbox" checked={selectedCount === pendingCount && pendingCount > 0} onChange={selectAll} style={{ cursor: 'pointer', accentColor: '#3b82f6' }} />
                                 </th>
@@ -177,7 +177,7 @@ function ItemsTab({ order, orderId, state, showToast, onOrderUpdate }: {
 
                             return (
                                 <tr key={li.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: isSelected ? 'rgba(59,130,246,0.08)' : 'transparent' }}>
-                                    {isMerCheck && stockChecked && (
+                                    {isActionable && stockChecked && (
                                         <td style={{ padding: '10px 10px 10px 14px', width: 30 }}>
                                             {isPending ? (
                                                 <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(li.id)} style={{ cursor: 'pointer', accentColor: '#3b82f6' }} />
@@ -304,10 +304,13 @@ export default function OrderDetailPage() {
                 {order.customerName} · {order.customerEmail} · {order.shippingCountry}
             </div>
 
-            {/* Step 1: Address Check — only for NEW orders */}
-            {state === 'NEW_FROM_SHOPIFY' && (
+            {/* ══ Address Check Card — available for ALL non-terminal states ══ */}
+            {!['FULFILLED', 'CANCELLED'].includes(state) && (
                 <div style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(59,130,246,0.02))', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#3b82f6', marginBottom: 12 }}>Bước 1: Check Địa chỉ giao hàng (FedEx)</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#3b82f6' }}>📍 Địa chỉ giao hàng</div>
+                        {state === 'CHECKING_ADDRESS' && <span style={{ padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: '#f59e0b22', color: '#f59e0b' }}>⏳ Đang xác minh</span>}
+                    </div>
                     <div style={{ color: '#aaa', fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
                         {addr.address1 && <div>{addr.address1}</div>}
                         {addr.address2 && <div>{addr.address2}</div>}
@@ -332,11 +335,11 @@ export default function OrderDetailPage() {
                             disabled={validatingAddress}
                             style={{ padding: '10px 24px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 14, opacity: validatingAddress ? 0.6 : 1 }}
                         >
-                            {validatingAddress ? '⏳ Đang kiểm tra...' : '🔍 Check Địa chỉ'}
+                            {validatingAddress ? '⏳ Đang kiểm tra FedEx/Google...' : '🔍 Check Địa chỉ (FedEx + Google)'}
                         </button>
                     ) : (
                         <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16, marginTop: 4 }}>
-                            {/* FedEx Result */}
+                            {/* FedEx / Google Result */}
                             {addressValidation && (
                                 <div style={{ marginBottom: 14 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -358,7 +361,7 @@ export default function OrderDetailPage() {
                                     </div>
                                     {addressValidation.changes && addressValidation.changes.length > 0 && (
                                         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: 10, marginBottom: 10 }}>
-                                            <div style={{ color: '#888', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{addressValidation.provider === 'google' ? 'GHI CHÚ GOOGLE:' : 'GHI CHÚ FEDEX:'}</div>
+                                            <div style={{ color: '#888', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>GHI CHÚ:</div>
                                             {addressValidation.changes.map((c: string, i: number) => (
                                                 <div key={i} style={{ color: '#aaa', fontSize: 12, lineHeight: 1.6 }}>• {c}</div>
                                             ))}
@@ -366,31 +369,15 @@ export default function OrderDetailPage() {
                                     )}
                                 </div>
                             )}
-                            <div style={{ display: 'flex', gap: 10 }}>
-                                <button onClick={() => doTransition('CHECKING_ADDRESS')} style={{ padding: '8px 20px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13, flex: 1 }}>
-                                    ✗ Sai — Cần liên hệ KH
-                                </button>
-                                <button onClick={() => doTransition('MER_CHECK')} style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13, flex: 1 }}>
-                                    ✓ Đúng — Chuyển MER Check
-                                </button>
-                            </div>
+                            <button onClick={() => { setShowAddressResult(false); setAddressValidation(null); }} style={{ padding: '6px 14px', background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                                🔄 Check lại
+                            </button>
                         </div>
                     )}
                 </div>
             )}
 
-            {/* Address being checked — waiting for fix */}
-            {state === 'CHECKING_ADDRESS' && (
-                <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>⏳ Đang check địa chỉ</div>
-                    <div style={{ color: '#aaa', fontSize: 13, marginBottom: 16 }}>Đang liên hệ khách hàng xác minh địa chỉ. Khi xác minh xong, chuyển sang MER Check.</div>
-                    <button onClick={() => doTransition('MER_CHECK')} style={{ padding: '8px 20px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-                        ✓ Địa chỉ OK — Chuyển MER Check
-                    </button>
-                </div>
-            )}
-
-            {/* Waiting Purchase — link to procurement */}
+            {/* ══ Waiting Purchase — link to procurement ══ */}
             {isWaitingPurchase && (
                 <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: 20, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
@@ -401,9 +388,17 @@ export default function OrderDetailPage() {
                 </div>
             )}
 
-            {/* General actions — only show for non-terminal, non-step-1 states */}
-            {!['NEW_FROM_SHOPIFY', 'CHECKING_ADDRESS', 'FULFILLED', 'CANCELLED'].includes(state) && (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            {/* ══ Pipeline Actions — for non-terminal states ══ */}
+            {!['FULFILLED', 'CANCELLED'].includes(state) && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ color: '#888', fontSize: 12, marginRight: 4 }}>Chuyển trạng thái:</span>
+                    {state === 'NEW_FROM_SHOPIFY' && <>
+                        <button onClick={() => doTransition('CHECKING_ADDRESS')} style={{ padding: '6px 14px', background: '#f59e0b22', color: '#f59e0b', border: '1px solid #f59e0b44', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>→ Check Địa chỉ</button>
+                        <button onClick={() => doTransition('MER_CHECK')} style={{ padding: '6px 14px', background: '#8b5cf622', color: '#8b5cf6', border: '1px solid #8b5cf644', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>→ MER Check</button>
+                    </>}
+                    {state === 'CHECKING_ADDRESS' && (
+                        <button onClick={() => doTransition('MER_CHECK')} style={{ padding: '6px 14px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Địa chỉ OK → MER Check</button>
+                    )}
                     {state === 'MER_CHECK' && (() => {
                         const allChecked = (order.lineItems || []).length > 0 && (order.lineItems || []).every((li: any) => li.itemState === 'IN_STOCK');
                         return <button onClick={() => doTransition('READY_TO_FULFILL')} disabled={!allChecked} style={{ padding: '6px 14px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 6, cursor: allChecked ? 'pointer' : 'not-allowed', fontSize: 12, fontWeight: 600, opacity: allChecked ? 1 : 0.35 }}>✓ Tất cả có hàng → Sẵn sàng giao</button>;
