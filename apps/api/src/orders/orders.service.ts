@@ -59,28 +59,34 @@ export class OrdersService {
     }
 
     async findById(id: string) {
-        const order = await this.prisma.order.findUnique({
-            where: { id },
-            include: {
-                shopifyStore: { select: { storeName: true, shopifyDomain: true } },
-                lineItems: {
-                    include: {
-                        variant: {
-                            include: {
-                                product: {
-                                    include: {
-                                        collection: { include: { brand: true } },
+        try {
+            const order = await this.prisma.order.findUnique({
+                where: { id },
+                include: {
+                    shopifyStore: { select: { storeName: true, shopifyDomain: true } },
+                    lineItems: {
+                        include: {
+                            variant: {
+                                include: {
+                                    product: {
+                                        include: {
+                                            brand: { select: { id: true, name: true, code: true } },
+                                        },
                                     },
                                 },
                             },
+                            brand: { select: { id: true, name: true, code: true } },
                         },
-                        brand: { select: { name: true, code: true } },
                     },
                 },
-            },
-        });
-        if (!order) throw new NotFoundException('Order not found');
-        return { data: this.serializeOrder(order) };
+            });
+            if (!order) throw new NotFoundException('Order not found');
+            return { data: this.serializeOrder(order) };
+        } catch (e: any) {
+            if (e instanceof NotFoundException) throw e;
+            this.logger.error(`findById(${id}) failed: ${e.message}`, e.stack);
+            throw e;
+        }
     }
 
     async updateStatus(
