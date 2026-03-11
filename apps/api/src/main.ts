@@ -106,7 +106,15 @@ async function bootstrap() {
             // Fix product_variants old constraints
             `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN color DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
             `DO $$ BEGIN ALTER TABLE product_variants ALTER COLUMN size DROP NOT NULL; EXCEPTION WHEN undefined_column THEN NULL; END $$`,
-            // Drop broken mapping/sync tables ONLY if old schema detected (colorway_id in shopify_variant_maps)
+            // ── Fix order_line_items missing columns ──
+            `ALTER TABLE order_line_items ADD COLUMN IF NOT EXISTS variant_id UUID REFERENCES product_variants(id)`,
+            `ALTER TABLE order_line_items ADD COLUMN IF NOT EXISTS brand_id UUID REFERENCES brands(id)`,
+            `ALTER TABLE order_line_items ADD COLUMN IF NOT EXISTS shopify_variant_id BIGINT`,
+            `ALTER TABLE order_line_items ADD COLUMN IF NOT EXISTS mapping_status VARCHAR(20) DEFAULT 'UNMAPPED'`,
+            `ALTER TABLE order_line_items ADD COLUMN IF NOT EXISTS item_state VARCHAR(30) DEFAULT 'PENDING'`,
+            `CREATE INDEX IF NOT EXISTS idx_oli_variant ON order_line_items(variant_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_oli_brand ON order_line_items(brand_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_oli_item_state ON order_line_items(item_state)`,
             `DO $$ BEGIN
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shopify_variant_maps' AND column_name='colorway_id')
                 OR NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='shopify_variant_maps')
