@@ -16,8 +16,8 @@ export class FedexService {
     }
 
     private get apiUrl() { return process.env.FEDEX_API_URL || 'https://apis.fedex.com'; }
-    private get apiKey() { return process.env.FEDEX_API_KEY || ''; }
-    private get secretKey() { return process.env.FEDEX_SECRET_KEY || ''; }
+    private get apiKey() { return process.env.FEDEX_CLIENT_ID || process.env.FEDEX_API_KEY || ''; }
+    private get secretKey() { return process.env.FEDEX_CLIENT_SECRET || process.env.FEDEX_SECRET_KEY || ''; }
     private get accountNumber() { return process.env.FEDEX_ACCOUNT_NUMBER || ''; }
 
     /* ── OAuth2 Token ── */
@@ -219,7 +219,7 @@ export class FedexService {
        (for countries FedEx doesn't support: SA, KW, etc.)
        ══════════════════════════════════════════════════════════ */
 
-    private get googleApiKey() { return process.env.GOOGLE_GEOCODING_API_KEY || ''; }
+    private get googleApiKey() { return process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_GEOCODING_API_KEY || ''; }
 
     async validateWithGoogle(addr: Record<string, any>): Promise<{
         valid: boolean;
